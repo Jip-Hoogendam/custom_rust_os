@@ -5,21 +5,29 @@
 #![reexport_test_harness_main = "test_main"]
 #![feature(abi_x86_interrupt)]
 
-pub mod serial;
-pub mod vga_buffer;
-pub mod gdt;
+extern crate alloc;
 
-use core::{panic::PanicInfo};
+pub mod allocator;
+pub mod gdt;
+pub mod memory;
+pub mod multi_tasking;
+pub mod serial;
+pub mod tasks;
+pub mod vga_buffer;
+
+use core::panic::PanicInfo;
 
 pub fn init() {
     gdt::init();
     interrupts::init_idt();
-    unsafe { interrupts::PICS.lock().initialize(); }
+    unsafe {
+        interrupts::PICS.lock().initialize();
+    }
     x86_64::instructions::interrupts::enable();
 }
 
-pub fn halt_loop() -> !{
-    loop{
+pub fn halt_loop() -> ! {
+    loop {
         x86_64::instructions::hlt();
     }
 }
@@ -55,10 +63,16 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     halt_loop();
 }
 
+#[cfg(test)]
+use bootloader::{BootInfo, entry_point};
+
+#[cfg(test)]
+entry_point!(test_kernel_main);
+
 /// Entry point for `cargo test`
 #[cfg(test)]
 #[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {
     init();
     test_main();
     halt_loop();
@@ -69,7 +83,6 @@ pub extern "C" fn _start() -> ! {
 fn panic(info: &PanicInfo) -> ! {
     test_panic_handler(info)
 }
-
 
 //QEMU config
 

@@ -20,7 +20,6 @@ pub enum Color {
     White = 15,
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 struct ColorCode(u8);
@@ -88,26 +87,33 @@ impl Writer {
         self.column_position = 0;
     }
 
-    fn clear_row(&mut self, row:usize){
+    fn clear_row(&mut self, row: usize) {
         let blank = ScreenChar {
             ascii_character: b' ',
-            color_code: self.color_code
+            color_code: self.color_code,
         };
         for col in 0..BUFFER_WIDTH {
             self.buffer.chars[row][col].write(blank);
         }
     }
 
+    fn delete(&mut self) {
+        self.column_position -= 1;
+        self.buffer.chars[BUFFER_HEIGHT - 1][self.column_position].write(ScreenChar {
+            ascii_character: b' ',
+            color_code: self.color_code,
+        });
+    }
 
     pub fn write_string(&mut self, s: &str) {
         for byte in s.bytes() {
             match byte {
                 // printable ASCII byte or newline
-                0x20..=0x7e | b'\n' | b'\t'=> self.write_byte(byte),
+                0x08 => self.delete(),
+                0x20..=0x7e | b'\n' | b'\t' => self.write_byte(byte),
                 // not part of printable ASCII range
                 _ => self.write_byte(0xfe),
             }
-
         }
     }
 }
@@ -146,17 +152,18 @@ macro_rules! println {
 }
 
 #[doc(hidden)]
+pub fn _delete() {}
+
+#[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    use x86_64::instructions::interrupts;   // new
+    use x86_64::instructions::interrupts; // new
 
-    interrupts::without_interrupts(|| {     // new
+    interrupts::without_interrupts(|| {
+        // new
         WRITER.lock().write_fmt(args).unwrap();
     });
 }
-
-
-
 
 //[!tests]
 #[test_case]
@@ -166,7 +173,7 @@ fn test_println_simple() {
 
 #[test_case]
 fn test_many_lines() {
-    for i in 0..200{
+    for i in 0..200 {
         println!("TEST_PRINT_MANY: {}", i)
     }
 }
@@ -186,3 +193,4 @@ fn test_println_output() {
         }
     });
 }
+

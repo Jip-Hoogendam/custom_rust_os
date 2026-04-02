@@ -1,23 +1,43 @@
-
 #![no_std]
 #![no_main]
 #![feature(custom_test_frameworks)]
 #![test_runner(owos_prime::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
-use core::panic::PanicInfo;
-use owos_prime::{halt_loop, println};
+extern crate alloc;
 
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+use bootloader::{BootInfo, entry_point};
+use core::panic::PanicInfo;
+use owos_prime::{
+    halt_loop, memory,
+    multi_tasking::{cooprative::Task, executor::Executor},
+    println,
+    tasks::keyboard,
+};
+use x86_64::VirtAddr;
+
+entry_point!(kernel_main);
+
+fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("Hello World{}", "!");
 
     owos_prime::init();
 
+    use owos_prime::allocator;
+    use owos_prime::memory::BootFrameAllocator;
+
+    let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_map) };
+    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset);
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap allocation failed");
+
     #[cfg(test)]
     test_main();
 
-    halt_loop();
+    let mut executor = Executor::default();
+    executor.spawn(Task::new(keyboard::print_keypresses()));
+    executor.run();
 }
 
 /// This function is called on panic.
@@ -28,11 +48,9 @@ fn panic(info: &PanicInfo) -> ! {
     halt_loop();
 }
 
-
 //this funciton is called on panics in tests
 #[cfg(test)]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     owos_prime::test_panic_handler(info)
 }
-
