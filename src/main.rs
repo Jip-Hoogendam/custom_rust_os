@@ -7,16 +7,25 @@
 extern crate alloc;
 
 use bootloader::{BootInfo, entry_point};
-use core::panic::PanicInfo;
+use core::{arch::asm, panic::PanicInfo};
 use owos_prime::{
     halt_loop, memory,
-    multi_tasking::{cooprative::Task, executor::Executor},
+    multi_tasking::{cooprative::Task, executor::Executor, premtive::thread},
     println,
     tasks::keyboard,
 };
 use x86_64::VirtAddr;
 
 entry_point!(kernel_main);
+
+fn test_tread() -> ! {
+    println!("test :/");
+    loop {
+        unsafe {
+            asm!("hlt");
+        }
+    }
+}
 
 fn kernel_main(boot_info: &'static BootInfo) -> ! {
     println!("Hello World{}", "!");
@@ -34,6 +43,8 @@ fn kernel_main(boot_info: &'static BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
+
+    let five = thread(test_tread);
 
     let mut executor = Executor::default();
     executor.spawn(Task::new(keyboard::print_keypresses()));

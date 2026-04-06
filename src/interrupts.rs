@@ -1,6 +1,9 @@
 use crate::{halt_loop, println};
 use lazy_static::lazy_static;
-use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+use x86_64::{
+    VirtAddr,
+    structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
+};
 
 use crate::gdt;
 lazy_static! {
@@ -9,11 +12,14 @@ lazy_static! {
         idt.breakpoint.set_handler_fn(breakpoint_handler);
         idt.double_fault.set_handler_fn(page_fault_handeler);
         unsafe {
-            idt.double_fault.set_handler_fn(double_fault_handler)
-                .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX); // new
+            idt.double_fault
+                .set_handler_fn(double_fault_handler)
+                .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
-
-        idt[InterruptIndex::Timer.as_usize()].set_handler_fn(timer_interrupt_handler);
+        unsafe {
+            idt[InterruptIndex::Timer.as_usize()]
+                .set_handler_addr(VirtAddr::from_ptr(timer_interrupt_handler as *const ()));
+        }
         idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
 
         idt
@@ -37,11 +43,61 @@ extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStac
     }
 }
 
-extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+#[unsafe(no_mangle)]
+extern "C" fn notfiy_end_of_timer_interrupt() {
     unsafe {
         PICS.lock()
             .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
     }
+}
+
+#[unsafe(no_mangle)]
+extern "C" fn print_rsp(var: usize) {
+    println!("var : {:#x}", var);
+}
+#[unsafe(naked)]
+extern "C" fn timer_interrupt_handler() {
+    core::arch::naked_asm!(
+        r"
+        push rax
+        push rcx
+        push rdx
+        push rsi
+        push rdi
+        push rbp
+        push rbx
+        push r8
+        push r9
+        push r10
+        push r11
+        push r12
+        push r13
+        push r14
+        push r15
+
+        mov rdi, rsp
+        call scheduler
+        mov rsp, rax
+   
+        call notfiy_end_of_timer_interrupt
+        pop r15
+        pop r14
+        pop r13
+        pop r12
+        pop r11
+        pop r10
+        pop r9
+        pop r8
+        pop rbx
+        pop rbp
+        pop rdi
+        pop rsi
+        pop rdx
+        pop rcx
+        pop rax
+        iretq
+        "
+    );
 }
 
 extern "x86-interrupt" fn page_fault_handeler(

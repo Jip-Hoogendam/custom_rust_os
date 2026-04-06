@@ -157,10 +157,9 @@ pub fn _delete() {}
 #[doc(hidden)]
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
-    use x86_64::instructions::interrupts; // new
+    use x86_64::instructions::interrupts;
 
     interrupts::without_interrupts(|| {
-        // new
         WRITER.lock().write_fmt(args).unwrap();
     });
 }
@@ -193,4 +192,3 @@ fn test_println_output() {
         }
     });
 }
-

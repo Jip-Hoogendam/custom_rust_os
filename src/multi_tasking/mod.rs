@@ -1,6 +1,7 @@
 pub mod cooprative;
 pub mod executor;
 pub mod premtive;
+pub mod scheduler;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TaskId(u64);
