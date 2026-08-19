@@ -1,11 +1,24 @@
 use core::alloc::Layout;
 
-use alloc::alloc::alloc;
+use alloc::alloc::{alloc, dealloc};
 
 #[repr(C)]
+#[derive(Debug)]
 pub struct Stack {
     pub begin: *mut u8,
     pub end: *mut u8,
+}
+
+unsafe impl Send for Stack {}
+
+impl Drop for Stack {
+    fn drop(&mut self) {
+        unsafe {
+            let layout =
+                Layout::from_size_align_unchecked(self.end as usize - self.begin as usize, 16);
+            dealloc(self.begin, layout);
+        }
+    }
 }
 
 impl Stack {

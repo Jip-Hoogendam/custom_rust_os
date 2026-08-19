@@ -1,11 +1,9 @@
-use crate::{
-    multi_tasking::scheduler::{MAX_THREAD_COUNT, TASK_QUEUE},
-    println,
-};
+use crate::multi_tasking::{TaskId, scheduler::SCHEDULER};
 
 pub mod stack;
 pub mod tcb;
-use tcb::TCB;
+use tcb::Thread;
+use x86_64::instructions::interrupts::enable_and_hlt;
 
 unsafe extern "C" {
     pub unsafe fn context_restore(old_rsp: *mut *mut u8, new_rsp: *mut *mut u8);
@@ -13,31 +11,40 @@ unsafe extern "C" {
 
 pub enum ThreadError {
     NoPlaceInQueue,
+    InitFailed,
 }
 
+#[derive(Debug)]
 pub struct ThreadHandle {
-    tcb: TCB,
+    id: TaskId,
 }
 
-pub fn thread(entry: fn() -> !) -> Result<ThreadHandle, ThreadError> {
+pub fn spawn(f: impl FnOnce() + 'static + Send) -> ThreadHandle {
+    let closure =
+        alloc::boxed::Box::new(alloc::boxed::Box::new(f) as alloc::boxed::Box<dyn FnOnce() + Send>);
+    let capture = alloc::boxed::Box::into_raw(closure);
     let stack = stack::Stack::new(1024 * 16);
-    let tcb = TCB::init(stack, entry);
-
+    let tcb = Thread::spawn(stack, capture);
     x86_64::instructions::interrupts::disable();
-    'outer: {
-        let mut task_queue = TASK_QUEUE.lock();
-        for task_queue_ptr in 0..MAX_THREAD_COUNT {
-            if task_queue[task_queue_ptr] == 0 {
-                task_queue[task_queue_ptr] = tcb.rsp as usize;
-                break 'outer;
-            }
-        }
-        return Err(ThreadError::NoPlaceInQueue);
-    }
+    let id = SCHEDULER.lock().schedule(tcb);
     x86_64::instructions::interrupts::enable();
-    Ok(ThreadHandle { tcb })
+    ThreadHandle { id }
 }
 
-pub fn thread_exit() {
-    println!("Thread ended!");
+//Initilizes a new thread.
+pub fn thread(entry: fn()) -> ThreadHandle {
+    let stack = stack::Stack::new(1024 * 16);
+    let tcb = Thread::init_fn(stack, entry);
+    x86_64::instructions::interrupts::disable();
+    let id = SCHEDULER.lock().schedule(tcb);
+    x86_64::instructions::interrupts::enable();
+    ThreadHandle { id }
+}
+
+//gets called when a thread has ended
+pub extern "C" fn thread_exit() -> ! {
+    SCHEDULER.lock().kill_current_task();
+    loop {
+        enable_and_hlt();
+    }
 }

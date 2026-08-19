@@ -17,10 +17,10 @@ lazy_static! {
                 .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
         unsafe {
-            idt[InterruptIndex::Timer.as_usize()]
+            idt[InterruptIndex::Timer.as_u8()]
                 .set_handler_addr(VirtAddr::from_ptr(timer_interrupt_handler as *const ()));
         }
-        idt[InterruptIndex::Keyboard.as_usize()].set_handler_fn(keyboard_interrupt_handler);
+        idt[InterruptIndex::Keyboard.as_u8()].set_handler_fn(keyboard_interrupt_handler);
 
         idt
     };
@@ -76,7 +76,7 @@ extern "C" fn timer_interrupt_handler() {
         push r15
 
         mov rdi, rsp
-        call scheduler
+        call schedule
         mov rsp, rax
    
         call notfiy_end_of_timer_interrupt

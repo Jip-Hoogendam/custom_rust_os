@@ -34,7 +34,7 @@ fn panic(info: &PanicInfo) -> ! {
     owos_prime::test_panic_handler(info)
 }
 
-fn fake_task() -> ! {
+fn fake_task() {
     halt_loop();
 }
 
@@ -48,4 +48,3 @@ fn create_many_tasks() {
     //we dont have a real wait yet :/
     for _i in 0..1000000 {}
 }
-
