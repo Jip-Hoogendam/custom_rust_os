@@ -1,4 +1,4 @@
-use bootloader::bootinfo::{MemoryMap, MemoryRegionType};
+use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 use x86_64::{
     PhysAddr, VirtAddr,
     structures::paging::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB},
@@ -6,7 +6,7 @@ use x86_64::{
 
 //Frame allocator that gives usable frames from the bootloader memory_map
 pub struct BootFrameAllocator {
-    memory_map: &'static MemoryMap,
+    memory_map: &'static MemoryRegions,
     reigion_index: usize,
     next_addr: u64,
 }
@@ -16,7 +16,7 @@ impl BootFrameAllocator {
     ///
     ///# Safety
     ///Caller must pass a valid memory_map where all USABLE frames are unused
-    pub unsafe fn init(memory_map: &'static MemoryMap) -> Self {
+    pub unsafe fn init(memory_map: &'static MemoryRegions) -> Self {
         BootFrameAllocator {
             memory_map,
             reigion_index: 0,
@@ -28,8 +28,8 @@ impl BootFrameAllocator {
     fn usable_frames(&self) -> impl Iterator<Item = PhysFrame> {
         self.memory_map
             .iter()
-            .filter(|region| region.region_type == MemoryRegionType::Usable)
-            .map(|region| region.range.start_addr()..region.range.end_addr())
+            .filter(|region| region.kind == MemoryRegionKind::Usable)
+            .map(|region| region.start..region.end)
             .flat_map(|region| region.step_by(4096))
             .map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
     }
@@ -38,12 +38,12 @@ impl BootFrameAllocator {
 unsafe impl FrameAllocator<Size4KiB> for BootFrameAllocator {
     fn allocate_frame(&mut self) -> Option<PhysFrame<Size4KiB>> {
         let mut reigion = self.memory_map.get(self.reigion_index)?;
-        if reigion.region_type != MemoryRegionType::Usable {
+        if reigion.kind != MemoryRegionKind::Usable {
             reigion = loop {
                 self.reigion_index += 1;
                 let reigion = self.memory_map.get(self.reigion_index)?;
-                if reigion.region_type == MemoryRegionType::Usable {
-                    self.next_addr = reigion.range.start_addr();
+                if reigion.kind == MemoryRegionKind::Usable {
+                    self.next_addr = reigion.start;
                     break reigion;
                 }
             }
@@ -51,7 +51,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootFrameAllocator {
 
         let frame = PhysFrame::containing_address(PhysAddr::new(self.next_addr));
         self.next_addr += 4096;
-        if self.next_addr >= reigion.range.end_addr() {
+        if self.next_addr >= reigion.end {
             self.reigion_index += 1;
         }
         Some(frame)

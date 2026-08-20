@@ -7,9 +7,12 @@
 
 extern crate alloc;
 
+// pub mod aipc;
 pub mod allocator;
+pub mod display;
 pub mod gdt;
 pub mod memory;
+// pub mod msr;
 pub mod multi_tasking;
 pub mod serial;
 pub mod tasks;
@@ -64,7 +67,7 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
-use bootloader::{BootInfo, entry_point};
+use bootloader_api::{BootInfo, entry_point};
 
 #[cfg(test)]
 entry_point!(test_kernel_main);
@@ -72,16 +75,10 @@ entry_point!(test_kernel_main);
 /// Entry point for `cargo test`
 #[cfg(test)]
 #[unsafe(no_mangle)]
-fn test_kernel_main(_boot_info: &'static BootInfo) -> ! {
+fn test_kernel_main(_boot_info: &'static mut BootInfo) -> ! {
     init();
     test_main();
     halt_loop();
-}
-
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    test_panic_handler(info)
 }
 
 //QEMU config

@@ -1,0 +1,189 @@
+use core::{mem, ops::Div};
+
+use bootloader_api::info::FrameBuffer;
+
+/// A pixel in the BGR format type
+/// Used to write to frame buffers
+#[derive(Clone)]
+pub struct BGRColor {
+    pub blue: u8,
+    pub green: u8,
+    pub red: u8,
+}
+
+impl BGRColor {
+    pub fn mix(&self, other: &BGRColor, amount: u8) -> BGRColor {
+        let amount = u16::from(amount);
+        let inverse = 255 - amount;
+
+        BGRColor {
+            blue: ((u16::from(self.blue) * amount + u16::from(other.blue) * inverse) / 255) as u8,
+            green: ((u16::from(self.green) * amount + u16::from(other.green) * inverse) / 255)
+                as u8,
+            red: ((u16::from(self.red) * amount + u16::from(other.red) * inverse) / 255) as u8,
+        }
+    }
+}
+
+impl Div<&u8> for BGRColor {
+    type Output = BGRColor;
+    fn div(self, rhs: &u8) -> Self::Output {
+        let div = f32::from(*rhs).div(255.);
+        Self {
+            red: f32::from(self.red).div(div) as u8,
+            blue: f32::from(self.blue).div(div) as u8,
+            green: f32::from(self.green).div(div) as u8,
+        }
+    }
+}
+
+pub trait FrameBufferWriter {
+    /// Writes to an exact pixel.
+    fn write_pixel(&mut self, x: usize, y: usize, pixel: &BGRColor);
+    /// Reads an exact pixel
+    fn read_pixel(&self, x: usize, y: usize) -> BGRColor;
+
+    /// Gets the witdth of the display in pixels
+    fn width(&self) -> u32;
+
+    ///Gets the width of the display in pixels
+    fn height(&self) -> u32;
+
+    /// Shifts the entire display by x pixels
+    fn shift(&mut self, pixels: usize);
+
+    ///Writes a rectangle. This has a default implementation
+    ///But it may be intresting to provide faster implemntation using SMID
+    fn write_rect(
+        &mut self,
+        mut coord_1: (usize, usize),
+        mut coord_2: (usize, usize),
+        pixel: &BGRColor,
+    ) {
+        let width = self.width() as usize;
+        let height = self.height() as usize;
+
+        if coord_2.0 > coord_1.0 {
+            mem::swap(&mut coord_1.0, &mut coord_2.0);
+        }
+        if coord_2.1 > coord_1.1 {
+            mem::swap(&mut coord_1.1, &mut coord_2.1);
+        }
+
+        //clamp the values
+        if coord_1.0 > width {
+            coord_1.0 = width;
+        }
+        if coord_2.0 > width {
+            coord_2.0 = width;
+        }
+        if coord_1.1 > height {
+            coord_1.1 = height;
+        }
+        if coord_2.1 > height {
+            coord_2.1 = height;
+        }
+
+        for x in coord_1.0..coord_2.0 {
+            for y in coord_1.1..coord_2.1 {
+                self.write_pixel(x, y, &pixel);
+            }
+        }
+    }
+}
+
+enum PixelFormat {
+    RGB,
+    BGR,
+    U8,
+}
+
+pub struct DisplayBuffer<'a> {
+    frame_buffer: &'a mut [u8],
+    stride: u32,
+    fmt: PixelFormat,
+    pixel_size: u8,
+}
+
+impl<'a> DisplayBuffer<'a> {
+    pub const fn uninit() -> Self {
+        Self {
+            frame_buffer: unsafe { core::slice::from_raw_parts_mut(core::ptr::dangling_mut(), 0) },
+            stride: 0,
+            fmt: PixelFormat::U8,
+            pixel_size: 0,
+        }
+    }
+}
+
+impl<'a> From<&'a mut FrameBuffer> for DisplayBuffer<'a> {
+    fn from(value: &'a mut FrameBuffer) -> Self {
+        let info = value.info();
+        Self {
+            frame_buffer: value.buffer_mut(),
+            stride: info.stride as u32,
+            fmt: match info.pixel_format {
+                bootloader_api::info::PixelFormat::U8 => PixelFormat::U8,
+                bootloader_api::info::PixelFormat::Rgb => PixelFormat::RGB,
+                bootloader_api::info::PixelFormat::Bgr => PixelFormat::BGR,
+                _ => PixelFormat::BGR,
+            },
+            pixel_size: info.bytes_per_pixel as u8,
+        }
+    }
+}
+
+impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
+    fn read_pixel(&self, x: usize, y: usize) -> BGRColor {
+        let start_index = (y * self.stride as usize + x) * self.pixel_size as usize;
+        let pixel = &self.frame_buffer[start_index..(start_index + self.pixel_size as usize)];
+        match self.fmt {
+            PixelFormat::RGB => BGRColor {
+                blue: pixel[2],
+                green: pixel[1],
+                red: pixel[0],
+            },
+            PixelFormat::BGR => BGRColor {
+                blue: pixel[0],
+                green: pixel[1],
+                red: pixel[2],
+            },
+            PixelFormat::U8 => BGRColor {
+                blue: pixel[0],
+                green: pixel[0],
+                red: pixel[0],
+            },
+        }
+    }
+
+    fn shift(&mut self, pixels: usize) {
+        let start = self.width() as usize * self.stride as usize * pixels;
+        self.frame_buffer.copy_within(start.., 0);
+    }
+
+    fn write_pixel(&mut self, x: usize, y: usize, pixel: &BGRColor) {
+        let start_index = (y * self.stride as usize + x) * self.pixel_size as usize;
+        let data = &mut self.frame_buffer[start_index..(start_index + self.pixel_size as usize)];
+        match self.fmt {
+            PixelFormat::BGR => {
+                data[0] = pixel.blue;
+                data[1] = pixel.green;
+                data[2] = pixel.red;
+            }
+            PixelFormat::RGB => {
+                data[0] = pixel.red;
+                data[1] = pixel.green;
+                data[2] = pixel.blue;
+            }
+            PixelFormat::U8 => data[0] = (pixel.red + pixel.blue + pixel.green).div_euclid(3),
+        }
+    }
+
+    fn width(&self) -> u32 {
+        self.stride
+    }
+
+    fn height(&self) -> u32 {
+        (self.frame_buffer.len() / self.stride as usize) as u32
+    }
+}

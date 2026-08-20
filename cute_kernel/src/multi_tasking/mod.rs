@@ -1,6 +1,5 @@
 pub mod cooprative;
 pub mod executor;
-pub mod mutex;
 pub mod premtive;
 pub mod scheduler;
 

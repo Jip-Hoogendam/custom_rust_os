@@ -55,6 +55,7 @@ extern "C" fn notfiy_end_of_timer_interrupt() {
 extern "C" fn print_rsp(var: usize) {
     println!("var : {:#x}", var);
 }
+
 #[unsafe(naked)]
 extern "C" fn timer_interrupt_handler() {
     core::arch::naked_asm!(
