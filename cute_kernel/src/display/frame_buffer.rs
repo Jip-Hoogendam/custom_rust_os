@@ -52,6 +52,8 @@ pub trait FrameBufferWriter {
     /// Shifts the entire display by x pixels
     fn shift(&mut self, pixels: usize);
 
+    fn fill(&mut self, pixels: &BGRColor);
+
     ///Writes a rectangle. This has a default implementation
     ///But it may be intresting to provide faster implemntation using SMID
     fn write_rect(
@@ -153,6 +155,44 @@ impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
                 green: pixel[0],
                 red: pixel[0],
             },
+        }
+    }
+
+    fn fill(&mut self, pixel: &BGRColor) {
+        match self.fmt {
+            PixelFormat::BGR => {
+                //An optimized appproch to creating filling the frame by manipulating the fact that
+                //the size is known.
+                if self.pixel_size == 4 {
+                    let (_, buffer, _) = unsafe { self.frame_buffer.align_to_mut() };
+                    let bgr_fmt = u32::from(pixel.blue)
+                        | u32::from(pixel.green) << 8
+                        | u32::from(pixel.red) << 16;
+                    buffer.fill(bgr_fmt);
+                } else {
+                    for range in self.frame_buffer.chunks_exact_mut(self.pixel_size as usize) {
+                        if let [blue, green, red, ..] = range {
+                            *blue = pixel.blue;
+                            *green = pixel.green;
+                            *red = pixel.red;
+                        }
+                    }
+                }
+            }
+            PixelFormat::RGB => {
+                for range in self.frame_buffer.chunks_exact_mut(self.pixel_size as usize) {
+                    if let [red, green, blue, ..] = range {
+                        *blue = pixel.blue;
+                        *green = pixel.green;
+                        *red = pixel.red;
+                    }
+                }
+            }
+            PixelFormat::U8 => {
+                let grayscale =
+                    (u16::from(pixel.red) + u16::from(pixel.blue) + u16::from(pixel.green)) / 255;
+                self.frame_buffer.fill(grayscale as u8);
+            }
         }
     }
 

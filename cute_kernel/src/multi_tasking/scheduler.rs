@@ -142,6 +142,7 @@ pub fn init() {}
 //A simple custom scheduler for the task switch
 #[unsafe(no_mangle)]
 extern "C" fn schedule(stack: *mut u8) -> *mut u8 {
+    println!("ping!");
     loop {
         if let Some(next) = SCHEDULER.lock().next(stack) {
             let next_stack: u64 = next.into();

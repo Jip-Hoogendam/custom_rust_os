@@ -25,13 +25,13 @@ impl Default for Font {
             font_weight: FontWeight::Regular,
             color: BGRColor {
                 blue: 255,
-                green: 255,
+                green: 198,
                 red: 255,
             },
             bg_color: BGRColor {
-                blue: 0,
-                green: 0,
-                red: 0,
+                blue: 49,
+                green: 34,
+                red: 32,
             },
         }
     }
@@ -57,7 +57,7 @@ impl Default for TTYOptions {
             font: Font::default(),
             padding: 10,
             kerning: 0,
-            vertical_space: 10,
+            vertical_space: 2,
             fallback_char: '�',
         }
     }
@@ -112,6 +112,13 @@ where
         self.cursor_x = options.padding;
         self.cursor_y = options.padding;
         self.options = options;
+        self.clear();
+    }
+
+    pub fn clear(&mut self) {
+        self.cursor_x = self.options.padding;
+        self.cursor_y = self.options.padding;
+        self.display_buffer.fill(&self.options.font.bg_color);
     }
 
     /// Creates a new writer.

@@ -1,5 +1,6 @@
 use core::arch::asm;
 
+/// A structue to set or read MSR values.
 pub struct MSRValues {
     pub eax: u32,
     pub edx: u32,
@@ -8,7 +9,8 @@ pub struct MSRValues {
 /// Reads the cpu MSR register.
 ///
 /// # Safety
-/// assumes that the prosessor has a msr.
+/// The cpu should be have a msr before this function gets called.
+#[inline]
 pub unsafe fn read_cpu_msr(msr: u32) -> MSRValues {
     let eax: u32;
     let edx: u32;
@@ -23,9 +25,10 @@ pub unsafe fn read_cpu_msr(msr: u32) -> MSRValues {
 /// Writes to the cpu MSR register
 ///
 /// # Safety
-/// Assumes that the prosessor has a msr.
+/// The cpu should be have a msr before this function gets called.
+#[inline]
 pub unsafe fn write_cpu_msr(msr: u32, MSRValues { eax, edx }: MSRValues) {
     unsafe {
-        asm!("wdmsr",in("ecx") msr,in("eax") eax,in("edx") edx);
+        asm!("wrmsr",in("ecx") msr,in("eax") eax,in("edx") edx);
     }
 }

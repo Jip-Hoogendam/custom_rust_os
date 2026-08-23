@@ -7,16 +7,15 @@
 
 extern crate alloc;
 
-// pub mod aipc;
+pub mod acpi;
 pub mod allocator;
 pub mod display;
 pub mod gdt;
 pub mod memory;
-// pub mod msr;
+pub mod msr;
 pub mod multi_tasking;
 pub mod serial;
 pub mod tasks;
-pub mod vga_buffer;
 
 use core::panic::PanicInfo;
 
