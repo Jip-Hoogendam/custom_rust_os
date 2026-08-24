@@ -88,15 +88,15 @@ pub trait FrameBufferWriter {
 
         for x in coord_1.0..coord_2.0 {
             for y in coord_1.1..coord_2.1 {
-                self.write_pixel(x, y, &pixel);
+                self.write_pixel(x, y, pixel);
             }
         }
     }
 }
 
 enum PixelFormat {
-    RGB,
-    BGR,
+    Rgb,
+    Bgr,
     U8,
 }
 
@@ -126,9 +126,9 @@ impl<'a> From<&'a mut FrameBuffer> for DisplayBuffer<'a> {
             stride: info.stride as u32,
             fmt: match info.pixel_format {
                 bootloader_api::info::PixelFormat::U8 => PixelFormat::U8,
-                bootloader_api::info::PixelFormat::Rgb => PixelFormat::RGB,
-                bootloader_api::info::PixelFormat::Bgr => PixelFormat::BGR,
-                _ => PixelFormat::BGR,
+                bootloader_api::info::PixelFormat::Rgb => PixelFormat::Rgb,
+                bootloader_api::info::PixelFormat::Bgr => PixelFormat::Bgr,
+                _ => PixelFormat::Bgr,
             },
             pixel_size: info.bytes_per_pixel as u8,
         }
@@ -140,12 +140,12 @@ impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
         let start_index = (y * self.stride as usize + x) * self.pixel_size as usize;
         let pixel = &self.frame_buffer[start_index..(start_index + self.pixel_size as usize)];
         match self.fmt {
-            PixelFormat::RGB => BGRColor {
+            PixelFormat::Rgb => BGRColor {
                 blue: pixel[2],
                 green: pixel[1],
                 red: pixel[0],
             },
-            PixelFormat::BGR => BGRColor {
+            PixelFormat::Bgr => BGRColor {
                 blue: pixel[0],
                 green: pixel[1],
                 red: pixel[2],
@@ -160,7 +160,7 @@ impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
 
     fn fill(&mut self, pixel: &BGRColor) {
         match self.fmt {
-            PixelFormat::BGR => {
+            PixelFormat::Bgr => {
                 //An optimized appproch to creating filling the frame by manipulating the fact that
                 //the size is known.
                 if self.pixel_size == 4 {
@@ -179,7 +179,7 @@ impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
                     }
                 }
             }
-            PixelFormat::RGB => {
+            PixelFormat::Rgb => {
                 for range in self.frame_buffer.chunks_exact_mut(self.pixel_size as usize) {
                     if let [red, green, blue, ..] = range {
                         *blue = pixel.blue;
@@ -205,12 +205,12 @@ impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
         let start_index = (y * self.stride as usize + x) * self.pixel_size as usize;
         let data = &mut self.frame_buffer[start_index..(start_index + self.pixel_size as usize)];
         match self.fmt {
-            PixelFormat::BGR => {
+            PixelFormat::Bgr => {
                 data[0] = pixel.blue;
                 data[1] = pixel.green;
                 data[2] = pixel.red;
             }
-            PixelFormat::RGB => {
+            PixelFormat::Rgb => {
                 data[0] = pixel.red;
                 data[1] = pixel.green;
                 data[2] = pixel.blue;

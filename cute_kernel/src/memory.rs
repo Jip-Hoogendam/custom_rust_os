@@ -12,12 +12,13 @@ pub struct BootFrameAllocator {
 }
 
 impl BootFrameAllocator {
-    ///create the Frame allocator from the passed memory_map
+    ///create the Frame allocator from the passed `memory_map`
     ///
     ///# Safety
-    ///Caller must pass a valid memory_map where all USABLE frames are unused
-    pub unsafe fn init(memory_map: &'static MemoryRegions) -> Self {
-        BootFrameAllocator {
+    ///Caller must pass a valid `memory_map` where all USABLE frames are unused
+    #[must_use]
+    pub const unsafe fn init(memory_map: &'static MemoryRegions) -> Self {
+        Self {
             memory_map,
             reigion_index: 0,
             next_addr: 0,
@@ -47,7 +48,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootFrameAllocator {
                     break reigion;
                 }
             }
-        };
+        }
 
         let frame = PhysFrame::containing_address(PhysAddr::new(self.next_addr));
         self.next_addr += 4096;
@@ -58,12 +59,13 @@ unsafe impl FrameAllocator<Size4KiB> for BootFrameAllocator {
     }
 }
 
-///Initilize a new PageOffsetTable
+///Initilize a new `PageOffsetTable`
 ///
 ///# Safety
 ///
 ///Caller must garuntee that the entire physical memory is mapped.
 ///Caller must garuntee this function is only called once.
+#[must_use]
 pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
     unsafe {
         let l4_table_frame = activate_l4_table(physical_memory_offset);
