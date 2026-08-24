@@ -16,7 +16,7 @@ pub unsafe fn read_cpu_msr(msr: u32) -> MSRValues {
     let edx: u32;
     unsafe {
         asm!(
-        "rdmsr",  in("ecx") msr, out("eax") eax, out("edx") edx)
+        "rdmsr",  in("ecx") msr, out("eax") eax, out("edx") edx, options(nostack, preserves_flags))
     }
 
     MSRValues { eax, edx }
@@ -29,6 +29,6 @@ pub unsafe fn read_cpu_msr(msr: u32) -> MSRValues {
 #[inline]
 pub unsafe fn write_cpu_msr(msr: u32, MSRValues { eax, edx }: MSRValues) {
     unsafe {
-        asm!("wrmsr",in("ecx") msr,in("eax") eax,in("edx") edx);
+        asm!("wrmsr",in("ecx") msr,in("eax") eax,in("edx") edx, options(nostack, preserves_flags));
     }
 }

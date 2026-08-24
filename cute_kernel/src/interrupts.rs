@@ -1,11 +1,10 @@
-use crate::{halt_loop, println};
+use crate::{halt_loop, println, tables::tss::DOUBLE_FAULT_IST_INDEX};
 use lazy_static::lazy_static;
 use x86_64::{
     VirtAddr,
     structures::idt::{InterruptDescriptorTable, InterruptStackFrame},
 };
 
-use crate::gdt;
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
@@ -14,7 +13,7 @@ lazy_static! {
         unsafe {
             idt.double_fault
                 .set_handler_fn(double_fault_handler)
-                .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
+                .set_stack_index(DOUBLE_FAULT_IST_INDEX as u16);
         }
         unsafe {
             idt[InterruptIndex::Timer.as_u8()]

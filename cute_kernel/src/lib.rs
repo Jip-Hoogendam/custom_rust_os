@@ -10,17 +10,32 @@ extern crate alloc;
 pub mod acpi;
 pub mod allocator;
 pub mod display;
-pub mod gdt;
 pub mod memory;
 pub mod msr;
 pub mod multi_tasking;
 pub mod serial;
+pub mod tables;
 pub mod tasks;
+pub mod variables;
 
 use core::panic::PanicInfo;
 
+/// This enum is used to denote diffrent operating systems privalage levels.
+/// Diffrent rings have diffrent acess to systems.
+#[repr(u8)]
+pub enum PrivalageLevel {
+    /// The kernel lives in this level
+    Ring0 = 0,
+    /// To be used
+    Ring1 = 1,
+    /// To be used
+    Ring2 = 2,
+    /// Userland to be used
+    Ring3 = 3,
+}
+
 pub fn init() {
-    gdt::init();
+    tables::init();
     interrupts::init_idt();
 
     unsafe {

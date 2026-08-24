@@ -5,6 +5,7 @@
 /// - Setup more accurate timer interupts.
 /// - Initlize multiple procssor's.
 /// - Inter procssor communication.
+/// ## Reading
 /// For more explanation about how the APIC works look at eighter:
 /// [multiprocessing support for hobby oses explained](http://www.osdever.net/tutorials/view/multiprocessing-support-for-hobby-oses-explained)
 /// [os-dev apic](https://wiki.osdev.org/APIC)
