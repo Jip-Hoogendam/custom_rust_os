@@ -61,8 +61,8 @@ static ref GDT: GDTSelectors = {
         tss,
         kernel_code_segment,
         kernel_data_segment,
-        userspace_data_segment,
         userspace_code_segment,
+        userspace_data_segment,
         task_state_segment,
     }
 };
@@ -77,5 +77,7 @@ pub fn init() {
 }
 
 pub mod gdt;
+/// A module to interact with the InteruptDiscriptorTable.
+/// This only suppports 64 bit long mode interupt discriptors.
 pub mod idt;
 pub mod tss;

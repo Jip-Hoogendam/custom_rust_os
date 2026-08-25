@@ -1,7 +1,6 @@
-use core::{arch::asm, hint, mem::transmute};
-
-/// A module to interact with the GDT https://wiki.osdev.org/Global_Descriptor_Table.
-use crate::{PrivalageLevel, println, tables::tss::TaskStateSegment};
+/// A module to interact with the GDT <https://wiki.osdev.org/Global_Descriptor_Table>.
+use crate::{PrivalageLevel, tables::tss::TaskStateSegment};
+use core::{arch::asm, mem::transmute};
 
 /// Used by the Global Descriptor table to determin the permissions of the diffrent segments. These
 /// hold induvidual discriptors of each segments and denote the permissions of these files.
@@ -78,12 +77,16 @@ impl SystemSegmentDiscriptor {
     }
 
     #[inline]
+    #[must_use]
     pub const fn as_split(self) -> (SegmentDiscriptor, SegmentDiscriptor) {
-        (self.top, unsafe { transmute(self.base_4 as u64) })
+        (self.top, unsafe {
+            transmute::<u64, SegmentDiscriptor>(self.base_4 as u64)
+        })
     }
 }
 
 impl SegmentDiscriptor {
+    #[must_use]
     pub const fn null() -> Self {
         Self {
             limit_1: 0,
@@ -236,7 +239,11 @@ impl SegmentDiscriptor {
     }
 
     /// Gets the privalage level of a segment
+    ///
+    /// # Panics
+    /// Panics if the privalage level is higher then 4
     #[inline]
+    #[must_use]
     pub const fn get_privilage_level(&self) -> PrivalageLevel {
         let level = (self.access_byte & Self::DPL_MASK) >> Self::DPL_INDEX;
         assert!(level < 4);
@@ -253,7 +260,7 @@ impl SegmentDiscriptor {
 /// A structure to load data into the GDTR register
 #[derive(Debug)]
 #[repr(C, packed(2))]
-struct GDTR {
+struct gdtr {
     /// The size in bytes of the GDT
     size: u16,
     /// The virual adress of the GDT
@@ -261,7 +268,7 @@ struct GDTR {
 }
 
 /// The global discriptor table
-/// Readmore here : https://wiki.osdev.org/Global_Descriptor_Table.
+/// Readmore here : <https://wiki.osdev.org/Global_Descriptor_Table>.
 #[repr(C, packed)]
 pub struct GlobalDescriptorTable<const SIZE: usize>([SegmentDiscriptor; SIZE]);
 
@@ -272,11 +279,20 @@ pub struct GlobalDescriptorTableBuilder<const SIZE: usize> {
     size: u16,
 }
 
+impl<const SIZE: usize> Default for GlobalDescriptorTableBuilder<SIZE> {
+    fn default() -> Self {
+        Self {
+            gdt: GlobalDescriptorTable([const { SegmentDiscriptor::null() }; SIZE]),
+            size: 1,
+        }
+    }
+}
+
 impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
     /// Creates a new GDT.
     /// This also automatically appends a single null table to the GDT.
     #[inline]
-    pub const fn new() -> GlobalDescriptorTableBuilder<SIZE> {
+    pub const fn new() -> Self {
         GlobalDescriptorTableBuilder {
             gdt: GlobalDescriptorTable([const { SegmentDiscriptor::null() }; SIZE]),
             size: 1,
@@ -314,8 +330,8 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
     pub fn load(&self) {
         let offset = &self.gdt as *const GlobalDescriptorTable<SIZE> as u64;
         let size = (self.size as usize * size_of::<SegmentDiscriptor>()) as u16 - 1;
-        let gdtr = &GDTR { offset, size };
-        let gdtr = gdtr as *const GDTR as u64;
+        let gdtr = &gdtr { offset, size };
+        let gdtr = gdtr as *const gdtr as u64;
         unsafe {
             asm!("lgdt [{gdtr}]", gdtr =  in(reg) gdtr, options(readonly, nostack, preserves_flags));
         }

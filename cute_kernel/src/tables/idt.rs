@@ -1,9 +1,5 @@
 use crate::{PrivalageLevel, tables::gdt::SegmentSelector};
 
-/// A module to interact with the InteruptDiscriptorTable.
-/// This only suppports 64 bit long mode interupt discriptors.
-///
-
 /// A enum to interact with the Interupt gate type
 #[repr(u8)]
 pub enum InteruptGateType {

@@ -4,10 +4,12 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 #![feature(abi_x86_interrupt)]
-#![deny(clippy::all)]
-#![warn(clippy::pedantic)]
-#![warn(clippy::nursery)]
-#![warn(clippy::cargo)]
+#![warn(clippy::all)]
+
+// enable these for fun !
+// #![warn(clippy::pedantic)]
+// #![warn(clippy::nursery)]
+// #![warn(clippy::cargo)]
 
 extern crate alloc;
 

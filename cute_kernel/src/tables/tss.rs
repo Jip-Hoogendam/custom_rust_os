@@ -1,5 +1,3 @@
-use lazy_static::lazy_static;
-
 pub const DOUBLE_FAULT_IST_INDEX: usize = 0;
 
 /// This is the bitmap to control access to the ports.
@@ -7,9 +5,16 @@ pub struct IOBitmap {
     bitmap: [u8; 8193],
 }
 
+impl Default for IOBitmap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl IOBitmap {
     /// Creates a new bitmap disssallowing all
     #[inline]
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             bitmap: [u8::MAX; 8193],
@@ -34,6 +39,7 @@ impl IOBitmap {
 
     /// Reads the current permissions of a port
     #[inline]
+    #[must_use]
     pub const fn is_allowed(&self, index: u16) -> bool {
         let byte = index / 8;
         let port = index % 8;
@@ -60,22 +66,29 @@ pub struct TaskStateSegment {
     io_bitmap: IOBitmap,
 }
 
+impl Default for TaskStateSegment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaskStateSegment {
     #[inline]
-    pub const fn new() -> TaskStateSegment {
-        TaskStateSegment {
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
             reserved: 0,
             privalage_stack_pointer: [0; 3],
             reserved_2: [0; 2],
             interupt_stack_table: [0; 7],
             reserved_3: 0,
             reserved_4: 0,
-            iopb: core::mem::offset_of!(TaskStateSegment, io_bitmap) as u16,
+            iopb: core::mem::offset_of!(Self, io_bitmap) as u16,
             io_bitmap: IOBitmap::new(),
         }
     }
 
-    /// Gets the io bitmap from this TasktStateSegment
+    /// Gets the io bitmap from this `TasktStateSegment`
     #[inline]
     pub const fn get_bitmapp(&mut self) -> &mut IOBitmap {
         &mut self.io_bitmap

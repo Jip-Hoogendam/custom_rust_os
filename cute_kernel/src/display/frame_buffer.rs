@@ -12,11 +12,13 @@ pub struct BGRColor {
 }
 
 impl BGRColor {
-    pub fn mix(&self, other: &BGRColor, amount: u8) -> BGRColor {
+    #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn mix(&self, other: &Self, amount: u8) -> Self {
         let amount = u16::from(amount);
         let inverse = 255 - amount;
 
-        BGRColor {
+        Self {
             blue: ((u16::from(self.blue) * amount + u16::from(other.blue) * inverse) / 255) as u8,
             green: ((u16::from(self.green) * amount + u16::from(other.green) * inverse) / 255)
                 as u8,
@@ -26,7 +28,8 @@ impl BGRColor {
 }
 
 impl Div<&u8> for BGRColor {
-    type Output = BGRColor;
+    type Output = Self;
+    #[allow(clippy::cast_possible_truncation)]
     fn div(self, rhs: &u8) -> Self::Output {
         let div = f32::from(*rhs).div(255.);
         Self {
@@ -107,7 +110,8 @@ pub struct DisplayBuffer<'a> {
     pixel_size: u8,
 }
 
-impl<'a> DisplayBuffer<'a> {
+impl DisplayBuffer<'_> {
+    #[must_use]
     pub const fn uninit() -> Self {
         Self {
             frame_buffer: unsafe { core::slice::from_raw_parts_mut(core::ptr::dangling_mut(), 0) },
