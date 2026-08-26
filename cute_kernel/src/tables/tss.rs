@@ -1,4 +1,3 @@
-use crate::println;
 
 /// This struct is to define a IST to use in the idt.
 #[repr(packed, C)]

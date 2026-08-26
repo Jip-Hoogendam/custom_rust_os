@@ -139,7 +139,7 @@ impl<'a> From<&'a mut FrameBuffer> for DisplayBuffer<'a> {
     }
 }
 
-impl<'a> FrameBufferWriter for DisplayBuffer<'a> {
+impl FrameBufferWriter for DisplayBuffer<'_> {
     fn read_pixel(&self, x: usize, y: usize) -> BGRColor {
         let start_index = (y * self.stride as usize + x) * self.pixel_size as usize;
         let pixel = &self.frame_buffer[start_index..(start_index + self.pixel_size as usize)];

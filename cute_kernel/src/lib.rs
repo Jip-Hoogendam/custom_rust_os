@@ -46,16 +46,21 @@ impl Display for PrivalageLevel {
             f,
             "{}",
             match self {
-                PrivalageLevel::Ring0 => "Ring-0",
-                PrivalageLevel::Ring1 => "Ring-1",
-                PrivalageLevel::Ring2 => "Ring-2",
-                PrivalageLevel::Ring3 => "Ring-3",
+                Self::Ring0 => "Ring-0",
+                Self::Ring1 => "Ring-1",
+                Self::Ring2 => "Ring-2",
+                Self::Ring3 => "Ring-3",
             }
         )
     }
 }
 
 pub static DT: spin::Mutex<DiscriptorTables> = spin::Mutex::new(DiscriptorTables::init());
+/// Iniltilizies the kernel or application prosessor. Loading the `DiscriptorTables` and ACIP
+/// tables.
+///
+/// # Panics
+/// panics if any `DiscriptorTables` is full.
 pub fn init() {
     //---- setup gdt
     let mut dt = DT.lock();
@@ -74,7 +79,7 @@ pub fn init() {
         )
         .expect("GDT not large enough");
     // Userspace code segment
-    let userspace_code_segment = dt
+    let _userspace_code_segment = dt
         .get_mut_gdt()
         .append_segment_discriptor(
             *SegmentDiscriptor::new_segment(0, usize::MAX)
@@ -83,7 +88,7 @@ pub fn init() {
         )
         .expect("GDT not large enough");
     // Userspace data segment
-    let userspace_data_segment = dt
+    let _userspace_data_segment = dt
         .get_mut_gdt()
         .append_segment_discriptor(
             *SegmentDiscriptor::new_segment(0, usize::MAX)

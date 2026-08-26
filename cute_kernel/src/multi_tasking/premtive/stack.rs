@@ -23,11 +23,12 @@ impl Drop for Stack {
 
 impl Stack {
     //Createss a new stack where the size is the amount of bytes that should be allocated.
-    pub fn new(size: usize) -> Stack {
+    #[must_use]
+    pub fn new(size: usize) -> Self {
         unsafe {
             let layout = Layout::from_size_align_unchecked(size, 16);
             let ptr = alloc(layout);
-            Stack {
+            Self {
                 begin: ptr,
                 end: ptr.byte_add(size),
             }

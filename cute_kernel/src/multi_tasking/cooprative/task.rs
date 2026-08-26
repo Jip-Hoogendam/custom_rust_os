@@ -13,8 +13,8 @@ pub struct Task {
 }
 
 impl Task {
-    pub fn new(future: impl Future<Output = ()> + 'static) -> Task {
-        Task {
+    pub fn new(future: impl Future<Output = ()> + 'static) -> Self {
+        Self {
             id: TaskId::new(),
             future: Box::pin(future),
         }
@@ -24,7 +24,8 @@ impl Task {
         self.future.as_mut().poll(context)
     }
 
-    pub fn get_id(&self) -> TaskId {
+    #[must_use]
+    pub const fn get_id(&self) -> TaskId {
         self.id
     }
 }

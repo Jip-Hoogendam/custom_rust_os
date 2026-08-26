@@ -45,13 +45,14 @@ const RFLAGS_IF: u64 = 1 << 9;
 
 extern "C" fn trampoline(arg: *mut u8) {
     unsafe {
-        Box::from_raw(arg as *mut Box<dyn FnOnce() + Send>)();
+        Box::from_raw(arg.cast::<Box<dyn FnOnce() + Send>>())();
     }
 }
 
 impl Thread {
     #[inline]
-    pub fn init_root() -> Self {
+    #[must_use]
+    pub const fn init_root() -> Self {
         Self {
             stack: Stack {
                 begin: null_mut(),
@@ -61,13 +62,12 @@ impl Thread {
         }
     }
 
-    pub fn spawn(stack: Stack, capture: *mut Box<dyn FnOnce() + Send>) -> Thread {
+    pub fn spawn(stack: Stack, capture: *mut Box<dyn FnOnce() + Send>) -> Self {
         let sp = ((stack.end as usize) & !0xF) as *mut u8;
 
         //setup the stack of the thread
         let init_state = unsafe {
-            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>())
-                as *mut RingZeroInteruptContext
+            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>()).cast::<RingZeroInteruptContext>()
         };
 
         unsafe {
@@ -76,7 +76,7 @@ impl Thread {
             (*init_state).rcx = 0;
             (*init_state).rdx = 0;
             (*init_state).rsi = 0;
-            (*init_state).rdi = capture as *mut u8 as u64;
+            (*init_state).rdi = capture.cast::<u8>() as u64;
             (*init_state).rbp = 0;
             (*init_state).r8 = 0;
             (*init_state).r9 = 0;
@@ -108,19 +108,18 @@ impl Thread {
         //     (((init_state as *mut u64).add(2)) as *mut u8) as usize,
         //     (*init_state).unwind
         // );
-        Thread {
+        Self {
             stack,
             rsp: (init_state as u64),
         }
     }
 
-    pub fn init_fn(stack: Stack, entry: fn()) -> Thread {
+    pub fn init_fn(stack: Stack, entry: fn()) -> Self {
         let sp = ((stack.end as usize) & !0xF) as *mut u8;
 
         //setup the stack of the thread
         let init_state = unsafe {
-            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>())
-                as *mut RingZeroInteruptContext
+            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>()).cast::<RingZeroInteruptContext>()
         };
 
         unsafe {
@@ -161,7 +160,7 @@ impl Thread {
         //     (((init_state as *mut u64).add(2)) as *mut u8) as usize,
         //     (*init_state).unwind
         // );
-        Thread {
+        Self {
             stack,
             rsp: (init_state as u64),
         }

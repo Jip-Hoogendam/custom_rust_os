@@ -21,11 +21,11 @@ struct BuddyBlock {
 
 impl BuddyBlock {
     fn start_addr(&self) -> usize {
-        self as *const Self as usize
+        core::ptr::from_ref::<Self>(self) as usize
     }
 
     pub fn get_addr(&self) -> usize {
-        mem::size_of::<BuddyBlock>() + self.start_addr()
+        mem::size_of::<Self>() + self.start_addr()
     }
 }
 
@@ -38,35 +38,37 @@ impl Default for BinaryBuddy {
 }
 
 impl BinaryBuddy {
+    #[must_use]
     pub const fn new() -> Self {
-        BinaryBuddy {
+        Self {
             start: null_mut(),
             end: null_mut(),
         }
     }
 
-    ///initilizes the allocator.
+    /// Initilizes the allocator.
     ///
-    ///# Safety
+    /// # Safety
     ///
-    ///Caller must garuntee that the allocator points to a valid virtual memory adress.
+    /// Caller must garuntee that the allocator points to a valid virtual memory adress.
+    ///
+    /// # Panics
+    /// Panics if the set size is not a power of 2
     pub unsafe fn init(&mut self, start: usize, size: usize) {
-        if !size.is_power_of_two() {
-            panic!("allocator size must be power of 2 ");
-        }
+        assert!(size.is_power_of_two(), "allocator size must be power of 2 ");
         self.start = start as *mut BuddyBlock;
         unsafe { (*self.start).size = size };
         unsafe { (*self.start).free = true };
-        self.end = BinaryBuddy::next_block(self.start);
+        self.end = Self::next_block(self.start);
     }
 
     //finds the best block for the given size value.
     fn find_best_block(&self, size: usize) -> Option<*mut BuddyBlock> {
         let mut res_block: *mut BuddyBlock = null_mut();
         let mut block = self.start;
-        let mut buddy = BinaryBuddy::next_block(block);
+        let mut buddy = Self::next_block(block);
         if buddy == self.end && unsafe { (*block).free } {
-            return Some(BinaryBuddy::split_block(self.start, size));
+            return Some(Self::split_block(self.start, size));
         }
 
         while block < self.end && buddy < self.end {
@@ -78,9 +80,9 @@ impl BinaryBuddy {
                     res_block = block;
                 }
 
-                block = BinaryBuddy::next_block(buddy);
+                block = Self::next_block(buddy);
                 if block < self.end {
-                    buddy = BinaryBuddy::next_block(block);
+                    buddy = Self::next_block(block);
                 }
                 continue;
             }
@@ -90,7 +92,7 @@ impl BinaryBuddy {
                     && size <= (*block).size
                     && (res_block.is_null() || (*block).size <= (*res_block).size)
             } {
-                res_block = block
+                res_block = block;
             }
 
             if unsafe {
@@ -98,31 +100,31 @@ impl BinaryBuddy {
                     && size <= (*buddy).size
                     && (res_block.is_null() || (*buddy).size <= (*res_block).size)
             } {
-                res_block = buddy
+                res_block = buddy;
             }
 
             if unsafe { (*block).size <= (*buddy).size } {
-                block = BinaryBuddy::next_block(buddy);
+                block = Self::next_block(buddy);
                 if block < self.end {
-                    buddy = BinaryBuddy::next_block(block);
+                    buddy = Self::next_block(block);
                 }
             } else {
                 block = buddy;
-                buddy = BinaryBuddy::next_block(block);
+                buddy = Self::next_block(block);
             }
         }
 
-        if !res_block.is_null() {
-            Some(BinaryBuddy::split_block(res_block, size))
-        } else {
+        if res_block.is_null() {
             None
+        } else {
+            Some(Self::split_block(res_block, size))
         }
     }
 
     ///finds the next usable block.
     #[inline]
     fn next_block(block: *mut BuddyBlock) -> *mut BuddyBlock {
-        unsafe { (block as *mut u8).add((*block).size) as *mut BuddyBlock }
+        unsafe { block.cast::<u8>().add((*block).size).cast::<BuddyBlock>() }
     }
 
     ///splits the block into the 2 smaller blocks
@@ -132,7 +134,7 @@ impl BinaryBuddy {
                 while size < (*block).size / 2 {
                     let new_size = (*block).size / 2;
                     (*block).size = new_size;
-                    let new_block = BinaryBuddy::next_block(block);
+                    let new_block = Self::next_block(block);
                     (*new_block).size = new_size;
                     (*new_block).free = true;
                 }
@@ -149,12 +151,10 @@ unsafe impl GlobalAlloc for Locked<BinaryBuddy> {
         let allocator = self.lock();
         let size = layout.size() + mem::size_of::<BuddyBlock>();
 
-        if let Some(block) = allocator.find_best_block(size) {
+        allocator.find_best_block(size).map_or(null_mut(), |block| {
             unsafe { (*block).free = false };
             unsafe { (*block).get_addr() as *mut u8 }
-        } else {
-            null_mut()
-        }
+        })
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: core::alloc::Layout) {

@@ -11,12 +11,13 @@ pub struct MSRValues {
 /// # Safety
 /// The cpu should be have a msr before this function gets called.
 #[inline]
+#[must_use]
 pub unsafe fn read_cpu_msr(msr: u32) -> MSRValues {
     let eax: u32;
     let edx: u32;
     unsafe {
         asm!(
-        "rdmsr",  in("ecx") msr, out("eax") eax, out("edx") edx, options(nostack, preserves_flags))
+        "rdmsr",  in("ecx") msr, out("eax") eax, out("edx") edx, options(nostack, preserves_flags));
     }
 
     MSRValues { eax, edx }

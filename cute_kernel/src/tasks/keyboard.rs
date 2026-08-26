@@ -31,7 +31,7 @@ impl Default for ScancodeStream {
         SCANCODE_QUEUE
             .try_init_once(|| ArrayQueue::new(100))
             .expect("Creation of scancode queue shuld only happen once");
-        ScancodeStream { _private: () }
+        Self { _private: () }
     }
 }
 
@@ -49,13 +49,10 @@ impl Stream for ScancodeStream {
         }
 
         WAKER.register(cx.waker());
-        match queue.pop() {
-            Some(scancode) => {
-                WAKER.take();
-                Poll::Ready(Some(scancode))
-            }
-            None => Poll::Pending,
-        }
+        queue.pop().map_or(Poll::Pending, |scancode| {
+            WAKER.take();
+            Poll::Ready(Some(scancode))
+        })
     }
 }
 

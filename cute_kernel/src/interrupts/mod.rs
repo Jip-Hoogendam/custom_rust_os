@@ -20,6 +20,7 @@ struct InterruptStackFrame {
 }
 
 impl Display for InterruptStackFrame {
+    #![allow(clippy::cast_possible_truncation)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
@@ -41,7 +42,13 @@ mod io;
 /// or timer interupt handdelers.
 mod system;
 
+/// Loads the interupts into the `DiscriptorTables`.
+///
+/// # Panics
+/// This function panics if the tss contains too many `InterruptStackFrame`s
 pub fn load_interupts(dt: &mut MutexGuard<DiscriptorTables>, selector: SegmentSelector) {
+    use crate::variables::InteruptStack;
+    static DOUBLE_FAULT_STACK: InteruptStack = [0u8; _];
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::PageFault,
         InteruptDiscriptor::new_trap(fault::page_fault_handeler as *const () as u64, selector),
@@ -51,11 +58,9 @@ pub fn load_interupts(dt: &mut MutexGuard<DiscriptorTables>, selector: SegmentSe
         InteruptDiscriptor::new_trap(system::breakpoint_handler as *const () as u64, selector),
     );
 
-    use crate::variables::INTERUPT_STACK;
-    static DOUBLE_FAULT_STACK: INTERUPT_STACK = [0u8; _];
     let double_fault_stack = dt
         .get_mut_tss()
-        .push_ist(&DOUBLE_FAULT_STACK as *const INTERUPT_STACK as u64)
+        .push_ist(&raw const DOUBLE_FAULT_STACK as u64)
         .expect("Too many interupt stacks allocated");
 
     dt.get_mut_idt().set_discriptor(
@@ -96,7 +101,7 @@ pub enum InterruptIndex {
 }
 
 impl InterruptIndex {
-    fn as_u8(self) -> u8 {
+    const fn as_u8(self) -> u8 {
         self as u8
     }
 

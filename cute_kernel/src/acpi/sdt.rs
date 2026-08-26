@@ -46,7 +46,7 @@ pub struct XSDP {
     /// The revision of the RSDP
     /// if this is heigher then 1 the use the XSDP instead.
     pub revision: u8,
-    /// The adress of the RSDT. Use the xsdt_address instead.
+    /// The adress of the RSDT. Use the `xsdt_address` instead.
     pub rsdt_address: u32,
 
     /// The total length including in bytes of the XSDP.
@@ -62,6 +62,7 @@ pub struct XSDP {
 }
 
 /// The system discriptor table pointer.
+///
 /// This will load eighter the extended or root system disctiptor pointer. These are required to
 /// load the system discriptor table. This enum when loading will also checksum the discriptor
 /// pointers.
@@ -73,7 +74,7 @@ pub enum SDP<'a> {
     XSDP(&'a XSDP),
 }
 
-impl<'a> SDP<'a> {
+impl SDP<'_> {
     /// Loads the SDP from the given pointer.
     ///
     /// # Safety
@@ -189,8 +190,9 @@ impl SDTHeader {
     /// # Safety
     /// This is perfectly safe to do as long as the load function was handled correctly.
     #[inline]
-    pub fn cast<T>(&self) -> &T {
-        unsafe { &*(self as *const Self).cast::<T>() }
+    #[must_use]
+    pub const fn cast<T>(&self) -> &T {
+        unsafe { &*core::ptr::from_ref::<Self>(self).cast::<T>() }
     }
 }
 
@@ -213,7 +215,7 @@ impl<'a> Iterator for SDTIter<'a> {
         match self.sdt.typ {
             SDTType::XSDT => {
                 let item =
-                    SDTables::load(unsafe { *(self.pointer as *const u64) + self.offset }).ok()?;
+                    SDTables::load(unsafe { *self.pointer.cast::<u64>() + self.offset }).ok()?;
                 unsafe {
                     self.pointer = self.pointer.add(size_of::<u64>());
                 }
@@ -222,7 +224,7 @@ impl<'a> Iterator for SDTIter<'a> {
             SDTType::RSDT => {
                 let item =
                     SDTables::load(
-                        unsafe { *(self.pointer as *const u32) + self.offset as u32 } as u64,
+                        u64::from(unsafe { *self.pointer.cast::<u32>() + self.offset as u32 }),
                     )
                     .ok()?;
                 unsafe {
@@ -251,10 +253,11 @@ pub struct SDT<'a> {
 }
 
 impl<'a> SDT<'a> {
-    pub fn tables_iter(self, offset: u64) -> SDTIter<'a> {
-        let pointer = self.header as *const SDTHeader;
-        let end = unsafe { (pointer as *const u8).add(self.header.length as usize) };
-        let pointer = unsafe { pointer.add(1) } as *const u8;
+    #[must_use]
+    pub const fn tables_iter(self, offset: u64) -> SDTIter<'a> {
+        let pointer = core::ptr::from_ref::<SDTHeader>(self.header);
+        let end = unsafe { pointer.cast::<u8>().add(self.header.length as usize) };
+        let pointer = unsafe { pointer.add(1) }.cast::<u8>();
         SDTIter {
             offset,
             sdt: self,
@@ -267,10 +270,10 @@ impl<'a> SDT<'a> {
     ///
     /// # Safety
     /// This should be safe to do as long as the provided SDP is correct
-    pub fn load(sdp: SDP<'a>, phys_mem_offset: VirtAddr) -> Result<SDT<'a>, SDTLoadErrors> {
+    pub fn load(sdp: SDP<'a>, phys_mem_offset: VirtAddr) -> Result<Self, SDTLoadErrors> {
         let (typ, header) = match sdp {
             SDP::RSDP(rsdp) => (SDTType::RSDT, unsafe {
-                SDTHeader::load(phys_mem_offset.as_u64() + rsdp.rsdt_address as u64)?.cast()
+                SDTHeader::load(phys_mem_offset.as_u64() + u64::from(rsdp.rsdt_address))?.cast()
             }),
             SDP::XSDP(xsdp) => (SDTType::XSDT, unsafe {
                 SDTHeader::load(phys_mem_offset.as_u64() + xsdp.xsdt_address)?.cast()

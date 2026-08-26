@@ -19,8 +19,9 @@ impl MADT {
     ///
     /// # Safety
     /// Should only be called once as each call will map to a the same APIC.
+    #[must_use]
     pub unsafe fn get_local_apic<'a>(&self, offset: u64) -> &'a mut APIC {
-        let mut pointer = self.local_apic_addr as u64;
+        let mut pointer = u64::from(self.local_apic_addr);
 
         // properly overide the record.
         for record in self.records() {
@@ -34,11 +35,12 @@ impl MADT {
     }
 
     /// Creates a iterator of all the attached records
-    pub fn records(&self) -> MADTRecordIterator {
-        let pointer = self as *const Self;
+    #[must_use]
+    pub const fn records(&self) -> MADTRecordIterator {
+        let pointer = core::ptr::from_ref::<Self>(self);
         // subtract 4 of the total length due to the record missing it signature
-        let end = unsafe { (pointer as *const u8).add(self.header.length as usize - 4) };
-        let pointer = unsafe { pointer.add(1) } as *const u8;
+        let end = unsafe { pointer.cast::<u8>().add(self.header.length as usize - 4) };
+        let pointer = unsafe { pointer.add(1) }.cast::<u8>();
         MADTRecordIterator { pointer, end }
     }
 }
@@ -53,7 +55,7 @@ pub mod record {
     }
 
     /// A record denoting a local apic of the processor.
-    /// This can be used to setup Symmetric MultiProssessing on the prosessor.
+    /// This can be used to setup Symmetric `MultiProssessing` on the prosessor.
     #[derive(Debug)]
     #[repr(C, packed)]
     pub struct LocalAPIC {
@@ -72,7 +74,7 @@ pub mod record {
     }
 
     /// A record refrenceing a I/O APIC in on the processor
-    /// This is required to setup Symmetric MultiProssessing.
+    /// This is required to setup Symmetric `MultiProssessing`.
     #[derive(Debug)]
     #[repr(C, packed)]
     pub struct IOAPIC {
@@ -179,7 +181,7 @@ impl Iterator for MADTRecordIterator {
             return None;
         }
         let header = unsafe { &*self.pointer.cast::<MADTRecordHeader>() };
-        let record = unsafe { &*(header as *const MADTRecordHeader).cast::<MADTRecord>() };
+        let record = unsafe { &*core::ptr::from_ref::<MADTRecordHeader>(header).cast::<MADTRecord>() };
         self.pointer = unsafe { self.pointer.add(header.record_length as usize) };
         Some(record)
     }

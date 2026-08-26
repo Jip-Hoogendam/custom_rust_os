@@ -126,7 +126,7 @@ where
     }
 
     /// Creates a new writer.
-    pub fn new(display_buffer: T, options: TTYOptions) -> Self {
+    pub const fn new(display_buffer: T, options: TTYOptions) -> Self {
         let padding = options.padding;
         Self {
             display_buffer,

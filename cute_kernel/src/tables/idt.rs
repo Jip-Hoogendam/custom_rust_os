@@ -13,7 +13,7 @@ pub enum InteruptGateType {
     TrapGate = 0xF,
 }
 
-/// Used to interact with the flags of a InteruptDiscriptor.
+/// Used to interact with the flags of a `InteruptDiscriptor`.
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C, packed)]
 struct InteruptDiscriptorAttributes {
@@ -84,8 +84,9 @@ impl InteruptDiscriptorAttributes {
 }
 
 /// A single interupt discriptor.
+///
 /// The interupt discriptor describes how a interupt is handled. These discriptors are placed into
-/// the InteruptDiscriptorTable. There are 2 types of interupt the Trap gate  and the interupt
+/// the `InteruptDiscriptorTable`. There are 2 types of interupt the Trap gate  and the interupt
 /// gate. The diffrence is that in a iterupt gate interupts are disabled on entry and exit of iret
 /// and in a trap gate this does not happen.
 #[derive(Clone, Copy, Debug)]
@@ -153,7 +154,8 @@ impl InteruptDiscriptor {
 
     /// creates a new descriptor from the offset.
     /// The selector will be set to the value from the cs register.
-    pub fn new_interupt(offset: u64, selector: SegmentSelector) -> Self {
+    #[must_use]
+    pub const fn new_interupt(offset: u64, selector: SegmentSelector) -> Self {
         Self::null()
             .set_offset(offset)
             .set_selctor(selector)
@@ -165,7 +167,8 @@ impl InteruptDiscriptor {
             )
     }
 
-    pub fn new_trap(offset: u64, selector: SegmentSelector) -> Self {
+    #[must_use]
+    pub const fn new_trap(offset: u64, selector: SegmentSelector) -> Self {
         Self::null()
             .set_offset(offset)
             .set_selctor(selector)
@@ -177,7 +180,8 @@ impl InteruptDiscriptor {
             )
     }
 
-    pub fn new_user_space_interupt(offset: u64, selector: SegmentSelector) -> Self {
+    #[must_use]
+    pub const fn new_user_space_interupt(offset: u64, selector: SegmentSelector) -> Self {
         Self::null()
             .set_offset(offset)
             .set_selctor(selector)
@@ -207,6 +211,7 @@ impl InteruptDiscriptor {
     }
 
     /// Sees if the interupt is enabled
+    #[must_use]
     pub const fn is_enabled(&self) -> bool {
         self.atters.is_enabled()
     }
@@ -217,7 +222,7 @@ pub enum InteruptDiscriptorIndex {
     /// Triggerd by Faults with DIV and IDIV instructions.
     DevideError = 0x00,
     DebugExeption = 0x01,
-    /// A NonMaskable external interupt
+    /// A `NonMaskable` external interupt
     NMIInterupt = 0x02,
     /// Triggerd by the INT3 instruction
     Breakpoint = 0x03,
@@ -286,6 +291,7 @@ impl Default for InteruptDiscriptorTable {
 impl InteruptDiscriptorTable {
     /// Creates a new discriptor table with no entries
     #[inline]
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             discriptors: [InteruptDiscriptor::null(); 256],
@@ -310,7 +316,7 @@ impl InteruptDiscriptorTable {
             pointer: u64,
         }
         let length = size_of::<Self>() as u16 - 1;
-        let pointer = self as *const Self as u64;
+        let pointer = core::ptr::from_ref::<Self>(self) as u64;
         let idtr = &Idtr { length, pointer };
         unsafe {
             asm!("lidt [{idtr}]", idtr =  in(reg) idtr, options(readonly, nostack, preserves_flags));

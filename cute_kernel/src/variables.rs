@@ -6,4 +6,4 @@
 pub const GDT_TABLE_SIZE: usize = 7;
 
 ///The allocated size of the interupt stacks
-pub type INTERUPT_STACK = [u8; 4096 * 64];
+pub type InteruptStack = [u8; 4096 * 64];

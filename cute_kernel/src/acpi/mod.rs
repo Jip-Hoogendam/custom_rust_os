@@ -43,7 +43,7 @@ pub enum SDTables {
 impl<'a> SDTables {
     #[inline]
     pub fn load(adress: u64) -> Result<&'a Self, SDTLoadErrors> {
-        Ok(unsafe { SDTHeader::load(adress)?.cast::<SDTables>() })
+        Ok(unsafe { SDTHeader::load(adress)?.cast::<Self>() })
     }
 }
 

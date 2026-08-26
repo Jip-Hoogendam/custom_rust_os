@@ -152,15 +152,15 @@ impl APIC {
     /// Writes to a APIC register.
     #[inline]
     fn read_addr(&self, addr: APICRegisters) -> u32 {
-        let pointer = self as *const Self;
-        unsafe { read_volatile(pointer.add(addr as usize) as *const u32) }
+        let pointer = core::ptr::from_ref::<Self>(self);
+        unsafe { read_volatile(pointer.add(addr as usize).cast::<u32>()) }
     }
 
     /// Read a register from a APIC.
     #[inline]
     fn write_addr(&mut self, addr: APICRegisters, data: u32) {
-        let pointer = self as *mut Self;
-        unsafe { write_volatile(pointer.add(addr as usize) as *mut u32, data) };
+        let pointer = core::ptr::from_mut::<Self>(self);
+        unsafe { write_volatile(pointer.add(addr as usize).cast::<u32>(), data) };
     }
 
     /// intilizes the APIC
@@ -171,9 +171,10 @@ impl APIC {
     /// requires the cpu to suport the Model specific register instructions.
     pub unsafe fn init(&mut self) {
         let cpuid = __cpuid(1);
-        if cpuid.edx & APIC_CPUID_OFFSET == 0 {
-            panic!("cpu does not provide a APIC");
-        }
+        debug_assert!(
+            cpuid.edx & APIC_CPUID_OFFSET != 0,
+            "cpu does not provide a APIC"
+        );
 
         //Disable pics
         unsafe {
@@ -183,12 +184,12 @@ impl APIC {
 
         // Enable the apic in case if it was not enabled.
         let MSRValues { eax, edx } = unsafe { read_cpu_msr(IA32_APIC_BASE_MSR) };
-        let base = (eax & 0xFFFFF000) as u64 | (((edx & 0xF) as u64) << 32);
+        let base = u64::from(eax & 0xFFFF_F000) | (u64::from(edx & 0xF) << 32);
         unsafe {
             write_cpu_msr(
                 IA32_APIC_BASE_MSR,
                 MSRValues {
-                    eax: (base & 0xFFFFF000) as u32 | IA32_APIC_BASE_MSR_ENABLE,
+                    eax: (base & 0xFFFF_F000) as u32 | IA32_APIC_BASE_MSR_ENABLE,
                     edx: 0,
                 },
             );

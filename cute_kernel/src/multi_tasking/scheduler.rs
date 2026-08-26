@@ -43,8 +43,9 @@ unsafe impl Send for Scheduler {}
 unsafe impl Sync for Scheduler {}
 
 impl Scheduler {
-    pub const fn new() -> Scheduler {
-        Scheduler { current_task: None }
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { current_task: None }
     }
 
     #[inline]
@@ -60,7 +61,7 @@ impl Scheduler {
                 state: ProcState::Running,
             },
         );
-        self.current_task = Some(id)
+        self.current_task = Some(id);
     }
 
     pub fn schedule(&mut self, thread: Thread) -> TaskId {
@@ -135,7 +136,7 @@ impl Scheduler {
     }
 }
 
-pub fn init() {}
+pub const fn init() {}
 
 //A simple custom scheduler for the task switch
 #[unsafe(no_mangle)]

@@ -1,14 +1,8 @@
-use crate::{
-    PrivalageLevel,
-    tables::{
-        gdt::{
-            GlobalDescriptorTable, GlobalDescriptorTableBuilder, SegmentDiscriptor,
-            SegmentSelector, SystemSegmentDiscriptor,
-        },
+use crate::tables::{
+        gdt::GlobalDescriptorTableBuilder,
         idt::InteruptDiscriptorTable,
         tss::TaskStateSegment,
-    },
-};
+    };
 
 // A structure to save all the discriptor tables in. Once these get loaded they must stay in memory
 // else it may cause errors.
@@ -26,27 +20,27 @@ impl DiscriptorTables {
         let tss = TaskStateSegment::new();
         let idt = InteruptDiscriptorTable::new();
         let gdt = GlobalDescriptorTableBuilder::new();
-        DiscriptorTables { gdt, tss, idt }
+        Self { gdt, idt, tss }
     }
 
     // Gets the idt as a mutable pointer
     #[inline]
     #[must_use]
-    pub fn get_mut_idt(&mut self) -> &mut InteruptDiscriptorTable {
+    pub const fn get_mut_idt(&mut self) -> &mut InteruptDiscriptorTable {
         &mut self.idt
     }
 
     /// Gets the tss as a mutable pointer
     #[inline]
     #[must_use]
-    pub fn get_mut_tss(&mut self) -> &mut TaskStateSegment {
+    pub const fn get_mut_tss(&mut self) -> &mut TaskStateSegment {
         &mut self.tss
     }
 
     /// Gets the gdt as a mutable pointer
     #[inline]
     #[must_use]
-    pub fn get_mut_gdt(
+    pub const fn get_mut_gdt(
         &mut self,
     ) -> &mut GlobalDescriptorTableBuilder<{ crate::variables::GDT_TABLE_SIZE }> {
         &mut self.gdt
@@ -58,7 +52,7 @@ impl DiscriptorTables {
 }
 
 pub mod gdt;
-/// A module to interact with the InteruptDiscriptorTable.
+/// A module to interact with the `InteruptDiscriptorTable`.
 /// This only suppports 64 bit long mode interupt discriptors.
 pub mod idt;
 pub mod tss;

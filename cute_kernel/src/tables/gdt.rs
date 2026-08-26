@@ -55,11 +55,12 @@ impl SystemSegmentDiscriptor {
 
     /// Creates a new tss segment.
     #[inline]
+    #[must_use]
     pub fn new_tss(tss: &TaskStateSegment) -> Self {
         let mut segment = SegmentDiscriptor::null();
         let limit = size_of::<TaskStateSegment>() - 1;
 
-        let base = tss as *const TaskStateSegment as u64;
+        let base = core::ptr::from_ref::<TaskStateSegment>(tss) as u64;
 
         // sets tss defaults
         segment
@@ -126,6 +127,7 @@ impl SegmentDiscriptor {
     ///Creates a sector based off a base and limit
     ///The limit must be in bytes.
     #[inline]
+    #[must_use]
     pub const fn new_segment(base: u32, limit: usize) -> Self {
         let mut segment = Self::null();
 
@@ -282,8 +284,9 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
     /// Creates a new GDT.
     /// This also automatically appends a single null table to the GDT.
     #[inline]
+    #[must_use]
     pub const fn new() -> Self {
-        GlobalDescriptorTableBuilder {
+        Self {
             gdt: GlobalDescriptorTable([const { SegmentDiscriptor::null() }; SIZE]),
             size: 1,
         }
@@ -328,10 +331,10 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
             offset: u64,
         }
 
-        let offset = &self.gdt as *const GlobalDescriptorTable<SIZE> as u64;
+        let offset = &raw const self.gdt as u64;
         let size = (self.size as usize * size_of::<SegmentDiscriptor>()) as u16 - 1;
-        let gdtr = &Gdtr { offset, size };
-        let gdtr = gdtr as *const Gdtr as u64;
+        let gdtr = &Gdtr { size, offset };
+        let gdtr = core::ptr::from_ref::<Gdtr>(gdtr) as u64;
         unsafe {
             asm!("lgdt [{gdtr}]", gdtr =  in(reg) gdtr, options(readonly, nostack, preserves_flags));
         }
@@ -358,6 +361,7 @@ impl Display for SegmentSelector {
 impl SegmentSelector {
     /// Loads loads the segment selector from the CS register.
     #[inline]
+    #[must_use]
     pub fn from_cs() -> Self {
         let data: u16;
         unsafe {
@@ -366,7 +370,8 @@ impl SegmentSelector {
         Self(data)
     }
 
-    pub fn from(value: u16) -> Self {
+    #[must_use]
+    pub const fn from(value: u16) -> Self {
         Self(value)
     }
 
@@ -383,7 +388,7 @@ impl SegmentSelector {
                 cs = in(reg) self.0,
                 tmp = lateout(reg) _,
                 options(preserves_flags),
-            )
+            );
         }
     }
 

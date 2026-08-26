@@ -11,8 +11,8 @@ pub struct Executor {
 }
 
 impl Default for Executor {
-    fn default() -> Executor {
-        Executor {
+    fn default() -> Self {
+        Self {
             tasks: BTreeMap::new(),
             task_queue: Arc::new(ArrayQueue::new(100)),
         }
@@ -81,7 +81,7 @@ struct TaskWaker {
 
 impl TaskWaker {
     fn new_waker(task_id: TaskId, task_queue: Arc<ArrayQueue<TaskId>>) -> Waker {
-        Waker::from(Arc::new(TaskWaker {
+        Waker::from(Arc::new(Self {
             task_id,
             task_queue,
         }))
