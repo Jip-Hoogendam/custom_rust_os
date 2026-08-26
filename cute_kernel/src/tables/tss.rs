@@ -1,4 +1,3 @@
-
 /// This struct is to define a IST to use in the idt.
 #[repr(packed, C)]
 #[derive(Clone, Copy, Debug)]
@@ -55,8 +54,8 @@ impl IOBitmap {
 /// The global type of a interupt stack table
 type InteruptStackTable = [u64; 7];
 
-/// The stack state segment is mostly used to point to stacks that should be used. With the interupt
-/// stack table being used to point to stacks to use in case of an interupt. And the stack to use
+/// The stack state segment is mostly used to point to stacks that should be
+/// stack table being used to point to stacks to use in case of an interupt.
 /// when escalating to diffrent privalage levels.
 #[repr(C, packed(4))]
 pub struct TaskStateSegment {
@@ -83,6 +82,7 @@ impl Default for TaskStateSegment {
 impl TaskStateSegment {
     #[inline]
     #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
     pub const fn new() -> Self {
         Self {
             reserved: 0,
@@ -116,6 +116,7 @@ impl TaskStateSegment {
         for index in 0..interupt_stack_table_length {
             if self.interupt_stack_table[index] == 0 {
                 self.interupt_stack_table[index] = ptr;
+                #[allow(clippy::cast_possible_truncation)]
                 return Some(InteruptStack(index as u8 + 1u8));
             }
         }

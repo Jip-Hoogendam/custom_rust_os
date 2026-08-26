@@ -46,6 +46,6 @@ fn test_println_simple() {
 #[test_case]
 fn test_many_lines() {
     for i in 0..200 {
-        println!("TEST_PRINT_MANY: {}", i)
+        println!("TEST_PRINT_MANY: {}", i);
     }
 }

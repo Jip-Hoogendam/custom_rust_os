@@ -2,7 +2,12 @@
 name = "cute_kernel"
 version = "0.3.0"
 edition = "2024"
-
+license-file = "../LICENSE"
+repository = "http://forgejo.servers/jhoogend/owos-prime"
+readme = "./README.md"
+keywords = ["OS", "Kernel"]
+categories = ["OS", "Kernel"]
+description = "The kernal of my own personal operating system"
 
 [dependencies]
 bootloader_api = "=0.11.15"

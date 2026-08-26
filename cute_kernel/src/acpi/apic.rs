@@ -153,14 +153,20 @@ impl APIC {
     #[inline]
     fn read_addr(&self, addr: APICRegisters) -> u32 {
         let pointer = core::ptr::from_ref::<Self>(self);
-        unsafe { read_volatile(pointer.add(addr as usize).cast::<u32>()) }
+        #[allow(clippy::cast_ptr_alignment)]
+        unsafe {
+            read_volatile(pointer.add(addr as usize).cast::<u32>())
+        }
     }
 
     /// Read a register from a APIC.
     #[inline]
     fn write_addr(&mut self, addr: APICRegisters, data: u32) {
         let pointer = core::ptr::from_mut::<Self>(self);
-        unsafe { write_volatile(pointer.add(addr as usize).cast::<u32>(), data) };
+        #[allow(clippy::cast_ptr_alignment)]
+        unsafe {
+            write_volatile(pointer.add(addr as usize).cast::<u32>(), data);
+        };
     }
 
     /// intilizes the APIC

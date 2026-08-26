@@ -35,7 +35,7 @@ impl InteruptDiscriptorAttributes {
     /// Sets bits of the flag at a offset
     #[inline]
     #[must_use]
-    const fn set_bits(&self, data: u8, offset: u8) -> Self {
+    const fn set_bits(self, data: u8, offset: u8) -> Self {
         Self {
             bits: self.bits | data << offset,
         }
@@ -44,7 +44,7 @@ impl InteruptDiscriptorAttributes {
     /// Unsets the bits of the flag as ta offset
     #[inline]
     #[must_use]
-    const fn unset_bits(&self, data: u8, offset: u8) -> Self {
+    const fn unset_bits(self, data: u8, offset: u8) -> Self {
         Self {
             bits: self.bits & !(data << offset),
         }
@@ -53,32 +53,32 @@ impl InteruptDiscriptorAttributes {
     /// Sets the gate type of the Interupt
     #[inline]
     #[must_use]
-    pub const fn set_gate_type(&self, kind: InteruptGateType) -> Self {
+    pub const fn set_gate_type(self, kind: InteruptGateType) -> Self {
         self.set_bits(kind as u8, Self::GATE_OFFSET)
     }
 
     /// Sets what CPU privalge level is allowed to acess the prosess.
     #[inline]
     #[must_use]
-    pub const fn set_privalage_level(&self, level: PrivalageLevel) -> Self {
+    pub const fn set_privalage_level(self, level: PrivalageLevel) -> Self {
         self.set_bits(level as u8, Self::DPL_OFFSET)
     }
 
     /// Sets the present bit to enable this interupt
     #[inline]
     #[must_use]
-    pub const fn enable(&self) -> Self {
+    pub const fn enable(self) -> Self {
         self.set_bits(1, Self::P_OFFSET)
     }
 
     /// Unsets the present bit to disable this interupt
     #[inline]
     #[must_use]
-    pub const fn disable(&self) -> Self {
+    pub const fn disable(self) -> Self {
         self.unset_bits(0, Self::P_OFFSET)
     }
 
-    pub const fn is_enabled(&self) -> bool {
+    pub const fn is_enabled(self) -> bool {
         self.bits & 1 << Self::P_OFFSET != 0
     }
 }
@@ -137,6 +137,7 @@ impl InteruptDiscriptor {
     /// Sets the offset fields of the descriptor
     #[inline]
     #[must_use]
+    #[allow(clippy::cast_possible_truncation)]
     const fn set_offset(mut self, offset: u64) -> Self {
         self.offset_1 = offset as u16;
         self.offset_2 = (offset >> 16) as u16;
@@ -207,7 +208,7 @@ impl InteruptDiscriptor {
 
     /// Enables the interupt
     pub const fn enable(&mut self) {
-        self.atters.enable();
+        self.atters = self.atters.enable();
     }
 
     /// Sees if the interupt is enabled
@@ -315,6 +316,7 @@ impl InteruptDiscriptorTable {
             length: u16,
             pointer: u64,
         }
+        #[allow(clippy::cast_possible_truncation)]
         let length = size_of::<Self>() as u16 - 1;
         let pointer = core::ptr::from_ref::<Self>(self) as u64;
         let idtr = &Idtr { length, pointer };

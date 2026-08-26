@@ -165,6 +165,7 @@ where
     }
 
     /// Displays a single char and advances the curser
+    #[allow(clippy::cast_possible_wrap)]
     pub fn display_char(&mut self, c: char) {
         match c {
             '\n' => self.newline(),
@@ -186,6 +187,8 @@ where
     }
 
     /// Shifts a curser by a set amount.
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_wrap)]
     fn shift_cursor(&mut self, chars: isize) {
         let pixels =
             self.options.font.raster_width as isize * chars + self.options.kerning as isize;
@@ -233,9 +236,6 @@ where
         }
     }
 }
-
-unsafe impl<T> Send for TTYDisplay<T> where T: FrameBufferWriter {}
-unsafe impl<T> Sync for TTYDisplay<T> where T: FrameBufferWriter {}
 
 impl<T> fmt::Write for TTYDisplay<T>
 where

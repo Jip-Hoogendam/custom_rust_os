@@ -63,6 +63,7 @@ impl SystemSegmentDiscriptor {
         let base = core::ptr::from_ref::<TaskStateSegment>(tss) as u64;
 
         // sets tss defaults
+        #[allow(clippy::cast_possible_truncation)]
         segment
             .set_base(base as u32) // Sets the base of the discriptor
             .set_limit(limit) // Sets the limit of the discriptor
@@ -101,6 +102,7 @@ impl SegmentDiscriptor {
 
     const LIMIT_MASK: u8 = 0b0000_1111;
 
+    #[allow(clippy::cast_possible_truncation)]
     pub const fn set_base(&mut self, base: u32) -> &mut Self {
         self.base_1 = base as u16;
         self.base_2 = (base >> 16) as u8;
@@ -108,6 +110,7 @@ impl SegmentDiscriptor {
         self
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     pub const fn set_limit(&mut self, mut limit: usize) -> &mut Self {
         // corrects the limit
         if limit == usize::MAX {
@@ -332,6 +335,7 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
         }
 
         let offset = &raw const self.gdt as u64;
+        #[allow(clippy::cast_possible_truncation)]
         let size = (self.size as usize * size_of::<SegmentDiscriptor>()) as u16 - 1;
         let gdtr = &Gdtr { size, offset };
         let gdtr = core::ptr::from_ref::<Gdtr>(gdtr) as u64;

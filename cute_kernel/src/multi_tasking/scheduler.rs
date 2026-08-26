@@ -1,7 +1,4 @@
-use core::{
-    num::NonZeroU64,
-    ops::Bound,
-};
+use core::{num::NonZeroU64, ops::Bound};
 
 use alloc::collections::BTreeMap;
 
@@ -97,15 +94,18 @@ impl Scheduler {
 
         let mut new_task = None;
 
-        for (id, task_info) in if let Some(task) = self.current_task {
-            task_table
-                .range((Bound::Excluded(task), Bound::Unbounded))
-                .chain(task_table.range((Bound::Unbounded, Bound::Excluded(task))))
-        } else {
-            task_table
-                .range(..)
-                .chain(task_table.range((Bound::Unbounded, Bound::Excluded(TaskId(0)))))
-        } {
+        for (id, task_info) in self.current_task.map_or_else(
+            || {
+                task_table
+                    .range(..)
+                    .chain(task_table.range((Bound::Unbounded, Bound::Excluded(TaskId(0)))))
+            },
+            |task| {
+                task_table
+                    .range((Bound::Excluded(task), Bound::Unbounded))
+                    .chain(task_table.range((Bound::Unbounded, Bound::Excluded(task))))
+            },
+        ) {
             if matches!(task_info.state, ProcState::Sleep) {
                 new_task = Some(*id);
                 break;

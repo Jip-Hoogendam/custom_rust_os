@@ -92,6 +92,7 @@ impl SDP<'_> {
             let xsdp = unsafe { &*rsdp_virt.as_ptr::<XSDP>() };
             let raw_data = rsdp_virt.as_ptr::<u8>();
             let mut checksum = 0u8;
+            #[allow(clippy::cast_possible_wrap)]
             for i in 0..xsdp.length {
                 checksum = checksum
                     .overflowing_add(unsafe { *raw_data.offset(i as isize) })
@@ -171,10 +172,14 @@ impl SDTHeader {
     /// # Safety
     /// Expects the given address to be a pointer to the start of a real system disctiptor table
     /// header
+    ///
+    /// # Errors
+    /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
     pub unsafe fn load<'a>(adress: u64) -> Result<&'a Self, SDTLoadErrors> {
         let header = unsafe { &*(adress as *const u8).cast::<Self>() };
         let raw_data = (adress as *const u8).cast::<u8>();
         let mut checksum = 0u8;
+        #[allow(clippy::cast_possible_wrap)]
         for i in 0..header.length {
             checksum = checksum
                 .overflowing_add(unsafe { *raw_data.offset(i as isize) })
@@ -216,6 +221,7 @@ impl<'a> Iterator for SDTIter<'a> {
         }
         match self.sdt.typ {
             SDTType::XSDT => {
+                #[allow(clippy::cast_ptr_alignment)]
                 let item =
                     SDTables::load(unsafe { *self.pointer.cast::<u64>() + self.offset }).ok()?;
                 unsafe {
@@ -224,6 +230,8 @@ impl<'a> Iterator for SDTIter<'a> {
                 Some(item)
             }
             SDTType::RSDT => {
+                #[allow(clippy::cast_possible_truncation)]
+                #[allow(clippy::cast_ptr_alignment)]
                 let item = SDTables::load(u64::from(unsafe {
                     *self.pointer.cast::<u32>() + self.offset as u32
                 }))
@@ -271,7 +279,10 @@ impl<'a> SDT<'a> {
     ///
     /// # Safety
     /// This should be safe to do as long as the provided SDP is correct
-    pub fn load(sdp: SDP<'a>, phys_mem_offset: VirtAddr) -> Result<Self, SDTLoadErrors> {
+    ///
+    /// # Errors
+    /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
+    pub fn load(sdp: &SDP<'a>, phys_mem_offset: VirtAddr) -> Result<Self, SDTLoadErrors> {
         let (typ, header) = match sdp {
             SDP::RSDP(rsdp) => (SDTType::RSDT, unsafe {
                 SDTHeader::load(phys_mem_offset.as_u64() + u64::from(rsdp.rsdt_address))?.cast()

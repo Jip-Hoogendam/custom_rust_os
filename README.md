@@ -1,1 +1,4 @@
-A OS based on the building a rust operating system tutorial.
+# Operating system
+
+This is the repo containing my personal hobby operating system
+

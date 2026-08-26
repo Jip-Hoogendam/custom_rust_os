@@ -28,6 +28,10 @@ pub mod binary_buddy;
 pub const HEAP_START: u64 = 0x6969_dead_0000;
 pub const HEAP_SIZE: u64 = 1 << 24;
 
+/// Initlizazes the heap
+///
+/// # Errors
+/// Returns a `MapToError` if it fails to allocate the HEAP
 pub fn init_heap(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
@@ -51,6 +55,7 @@ pub fn init_heap(
     }
 
     unsafe {
+        #[allow(clippy::cast_possible_truncation)]
         ALLOCATOR
             .lock()
             .init(HEAP_START as usize, HEAP_SIZE as usize);

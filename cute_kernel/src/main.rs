@@ -104,7 +104,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
     println!("Creating Async executor");
     let mut executor = Executor::default();
-    executor.spawn(Task::new(keyboard::print_keypresses()));
+    executor
+        .spawn(Task::new(keyboard::print_keypresses()))
+        .expect("Could not create keyboard runner");
     println!("Launchinig into executor");
     executor.run();
 }

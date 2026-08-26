@@ -69,5 +69,5 @@ pub unsafe fn load_sd_table<'a>(
     phys_mem_offset: VirtAddr,
 ) -> Result<SDT<'a>, SDTLoadErrors> {
     let sdp = unsafe { SDP::load_sdp(rsdp_ptr, phys_mem_offset)? };
-    SDT::load(sdp, phys_mem_offset)
+    SDT::load(&sdp, phys_mem_offset)
 }

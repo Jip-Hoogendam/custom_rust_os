@@ -6,6 +6,12 @@ members = ["cute_kernel"]
 name = "owos-prime"
 version = "0.1.0"
 edition = "2024"
+license-file = "./LICENSE"
+repository = "http://forgejo.servers/jhoogend/owos-prime"
+readme = "./README.md"
+keywords = ["OS"]
+categories = ["OS"]
+description = "This is my personal hobby operating system."
 
 
 [dependencies]

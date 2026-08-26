@@ -44,6 +44,7 @@ const KERNEL_CS: u64 = 0x08;
 const RFLAGS_IF: u64 = 1 << 9;
 
 extern "C" fn trampoline(arg: *mut u8) {
+    #[allow(clippy::cast_ptr_alignment)]
     unsafe {
         Box::from_raw(arg.cast::<Box<dyn FnOnce() + Send>>())();
     }
@@ -66,8 +67,10 @@ impl Thread {
         let sp = ((stack.end as usize) & !0xF) as *mut u8;
 
         //setup the stack of the thread
+        #[allow(clippy::cast_ptr_alignment)]
         let init_state = unsafe {
-            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>()).cast::<RingZeroInteruptContext>()
+            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>())
+                .cast::<RingZeroInteruptContext>()
         };
 
         unsafe {
@@ -118,8 +121,10 @@ impl Thread {
         let sp = ((stack.end as usize) & !0xF) as *mut u8;
 
         //setup the stack of the thread
+        #[allow(clippy::cast_ptr_alignment)]
         let init_state = unsafe {
-            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>()).cast::<RingZeroInteruptContext>()
+            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>())
+                .cast::<RingZeroInteruptContext>()
         };
 
         unsafe {

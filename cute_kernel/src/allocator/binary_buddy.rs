@@ -123,6 +123,7 @@ impl BinaryBuddy {
 
     ///finds the next usable block.
     #[inline]
+    #[allow(clippy::cast_ptr_alignment)]
     fn next_block(block: *mut BuddyBlock) -> *mut BuddyBlock {
         unsafe { block.cast::<u8>().add((*block).size).cast::<BuddyBlock>() }
     }

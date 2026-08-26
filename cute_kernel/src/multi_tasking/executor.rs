@@ -1,4 +1,8 @@
-use core::task::{Context, Poll, Waker};
+use core::{
+    error::Error,
+    fmt::Display,
+    task::{Context, Poll, Waker},
+};
 
 use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use crossbeam_queue::ArrayQueue;
@@ -19,8 +23,25 @@ impl Default for Executor {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum ExecutorError {
+    TaskQueueFull,
+    InvalidTaskId,
+}
+impl Display for ExecutorError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+impl Error for ExecutorError {}
+
 impl Executor {
-    pub fn spawn(&mut self, task: Task) {
+    /// Spawns a new async task on the executor
+    ///
+    /// # Errors
+    /// - Returns a `ExecutorError::InvalidTaskId` if the task id gets reused
+    /// - Returns a `ExecutorError::TaskQueueFull` if the task queue is full
+    pub fn spawn(&mut self, task: Task) -> Result<(), ExecutorError> {
         let task_id = task.get_id();
 
         let Self { tasks, task_queue } = self;
@@ -32,17 +53,20 @@ impl Executor {
             )
             .is_some()
         {
-            panic!("Reuse of task id");
+            Err(ExecutorError::InvalidTaskId)?;
         }
 
-        self.task_queue.push(task_id).expect("Task queue is full");
+        if self.task_queue.push(task_id).is_ok() {
+            Ok(())
+        } else {
+            Err(ExecutorError::TaskQueueFull)
+        }
     }
 
     pub fn run_ready_tasks(&mut self) {
         while let Some(task_id) = self.task_queue.pop() {
-            let (task, waker) = match self.tasks.get_mut(&task_id) {
-                Some(task) => task,
-                None => continue,
+            let Some((task, waker)) = self.tasks.get_mut(&task_id) else {
+                continue;
             };
 
             let mut context = Context::from_waker(waker);

@@ -30,6 +30,7 @@ impl BGRColor {
 impl Div<&u8> for BGRColor {
     type Output = Self;
     #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     fn div(self, rhs: &u8) -> Self::Output {
         let div = f32::from(*rhs).div(255.);
         Self {
@@ -125,14 +126,14 @@ impl DisplayBuffer<'_> {
 impl<'a> From<&'a mut FrameBuffer> for DisplayBuffer<'a> {
     fn from(value: &'a mut FrameBuffer) -> Self {
         let info = value.info();
+        #[allow(clippy::cast_possible_truncation)]
         Self {
             frame_buffer: value.buffer_mut(),
             stride: info.stride as u32,
             fmt: match info.pixel_format {
                 bootloader_api::info::PixelFormat::U8 => PixelFormat::U8,
                 bootloader_api::info::PixelFormat::Rgb => PixelFormat::Rgb,
-                bootloader_api::info::PixelFormat::Bgr => PixelFormat::Bgr,
-                _ => PixelFormat::Bgr,
+                bootloader_api::info::PixelFormat::Bgr | _ => PixelFormat::Bgr,
             },
             pixel_size: info.bytes_per_pixel as u8,
         }
@@ -195,6 +196,7 @@ impl FrameBufferWriter for DisplayBuffer<'_> {
             PixelFormat::U8 => {
                 let grayscale =
                     (u16::from(pixel.red) + u16::from(pixel.blue) + u16::from(pixel.green)) / 255;
+                #[allow(clippy::cast_possible_truncation)]
                 self.frame_buffer.fill(grayscale as u8);
             }
         }
@@ -227,6 +229,7 @@ impl FrameBufferWriter for DisplayBuffer<'_> {
         self.stride
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     fn height(&self) -> u32 {
         (self.frame_buffer.len() / self.stride as usize) as u32
     }
