@@ -47,8 +47,10 @@ pub struct TTYOptions {
     pub kerning: usize,
     // The vertial space between each line
     pub vertical_space: usize,
-    // The car used if we cannot lookup the given char
+    // The char used if we cannot lookup the given char
     pub fallback_char: char,
+    /// the width of a tab.
+    pub tab_width: u8,
 }
 
 impl Default for TTYOptions {
@@ -59,6 +61,7 @@ impl Default for TTYOptions {
             kerning: 0,
             vertical_space: 2,
             fallback_char: '�',
+            tab_width: 4,
         }
     }
 }
@@ -101,6 +104,7 @@ where
                 kerning: 0,
                 vertical_space: 0,
                 fallback_char: ' ',
+                tab_width: 0,
             },
             cursor_x: 0,
             cursor_y: 0,
@@ -165,6 +169,11 @@ where
         match c {
             '\n' => self.newline(),
             '\r' => self.cursor_x = self.options.padding,
+            '\t' => {
+                let char_index = self.cursor_x / self.options.font.raster_width;
+                let tab_left = (char_index as isize) % self.options.tab_width as isize + 1;
+                self.shift_cursor(tab_left);
+            }
             '\u{80}' => {
                 self.print_bg();
                 self.shift_cursor(-1);

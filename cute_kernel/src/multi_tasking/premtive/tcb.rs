@@ -1,7 +1,4 @@
-use core::{
-    num::{NonZeroU32, NonZeroU64},
-    ptr::null_mut,
-};
+use core::ptr::null_mut;
 
 use alloc::boxed::Box;
 

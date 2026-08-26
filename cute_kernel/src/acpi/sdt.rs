@@ -2,7 +2,6 @@ use x86_64::{PhysAddr, VirtAddr};
 
 use super::{SDTLoadErrors, SDTables};
 
-use crate::println;
 
 /// The structure of the RSDP.
 /// When loading a checksum needs to be created by adding the first 20 bytes of the RSDP

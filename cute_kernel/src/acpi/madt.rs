@@ -1,5 +1,5 @@
 /// A module to read the Multiple APIC Description Table.
-use crate::{acpi::sdt::ShortSDTHeader, println};
+use crate::acpi::sdt::ShortSDTHeader;
 
 use super::apic::APIC;
 

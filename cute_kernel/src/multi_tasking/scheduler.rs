@@ -1,14 +1,12 @@
 use core::{
     num::NonZeroU64,
     ops::Bound,
-    ptr::null_mut,
-    sync::atomic::{AtomicU64, Ordering},
 };
 
-use alloc::collections::{BTreeMap, LinkedList, btree_set::Range};
+use alloc::collections::BTreeMap;
 
 use crate::{
-    multi_tasking::{TaskId, cooprative::Task, premtive::tcb::Thread},
+    multi_tasking::{TaskId, premtive::tcb::Thread},
     println,
 };
 

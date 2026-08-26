@@ -16,6 +16,7 @@ extern crate alloc;
 pub mod acpi;
 pub mod allocator;
 pub mod display;
+pub mod interrupts;
 pub mod memory;
 pub mod msr;
 pub mod multi_tasking;
@@ -24,7 +25,7 @@ pub mod tables;
 pub mod tasks;
 pub mod variables;
 
-use core::panic::PanicInfo;
+use core::{fmt::Display, panic::PanicInfo};
 
 /// This enum is used to denote diffrent operating systems privalage levels.
 /// Diffrent rings have diffrent acess to systems.
@@ -40,13 +41,73 @@ pub enum PrivalageLevel {
     Ring3 = 3,
 }
 
-pub fn init() {
-    tables::init();
-    interrupts::init_idt();
-
-    unsafe {
-        interrupts::PICS.lock().initialize();
+impl Display for PrivalageLevel {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PrivalageLevel::Ring0 => "Ring-0",
+                PrivalageLevel::Ring1 => "Ring-1",
+                PrivalageLevel::Ring2 => "Ring-2",
+                PrivalageLevel::Ring3 => "Ring-3",
+            }
+        )
     }
+}
+
+pub static DT: spin::Mutex<DiscriptorTables> = spin::Mutex::new(DiscriptorTables::init());
+pub fn init() {
+    //---- setup gdt
+    let mut dt = DT.lock();
+    // Kernal code segment
+    let kernel_code_segment = dt
+        .get_mut_gdt()
+        .append_segment_discriptor(
+            *SegmentDiscriptor::new_segment(0, usize::MAX).set_executable(true),
+        )
+        .expect("GDT not large enough");
+    // Kernal data segment
+    let kernel_data_segment = dt
+        .get_mut_gdt()
+        .append_segment_discriptor(
+            *SegmentDiscriptor::new_segment(0, usize::MAX).set_executable(false),
+        )
+        .expect("GDT not large enough");
+    // Userspace code segment
+    let userspace_code_segment = dt
+        .get_mut_gdt()
+        .append_segment_discriptor(
+            *SegmentDiscriptor::new_segment(0, usize::MAX)
+                .set_executable(true)
+                .set_privalage_level(PrivalageLevel::Ring3),
+        )
+        .expect("GDT not large enough");
+    // Userspace data segment
+    let userspace_data_segment = dt
+        .get_mut_gdt()
+        .append_segment_discriptor(
+            *SegmentDiscriptor::new_segment(0, usize::MAX)
+                .set_executable(false)
+                .set_privalage_level(PrivalageLevel::Ring3),
+        )
+        .expect("GDT not large enough");
+
+    // Task state segment
+    let task_state_segment = SystemSegmentDiscriptor::new_tss(dt.get_mut_tss());
+    let task_state_segment = dt
+        .get_mut_gdt()
+        .append_system_discriptor(&task_state_segment)
+        .expect("GDT not large enough");
+
+    interrupts::load_interupts(&mut dt, kernel_code_segment);
+    dt.get_mut_idt().load();
+
+    dt.get_mut_gdt().load();
+    // Load registers
+    kernel_code_segment.set_as_cs_register();
+    kernel_data_segment.set_as_ds_register();
+    task_state_segment.set_as_tss_register();
 }
 
 pub fn halt_loop() -> ! {
@@ -89,6 +150,11 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 #[cfg(test)]
 use bootloader_api::{BootInfo, entry_point};
 
+use crate::tables::{
+    DiscriptorTables,
+    gdt::{SegmentDiscriptor, SystemSegmentDiscriptor},
+};
+
 #[cfg(test)]
 entry_point!(test_kernel_main);
 
@@ -118,5 +184,3 @@ pub fn exit_qemu(exit_code: QemuExitCode) {
         port.write(exit_code as u32);
     }
 }
-
-pub mod interrupts;

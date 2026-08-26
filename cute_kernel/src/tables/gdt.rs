@@ -1,6 +1,6 @@
 /// A module to interact with the GDT <https://wiki.osdev.org/Global_Descriptor_Table>.
 use crate::{PrivalageLevel, tables::tss::TaskStateSegment};
-use core::{arch::asm, mem::transmute};
+use core::{arch::asm, fmt::Display, mem::transmute};
 
 /// Used by the Global Descriptor table to determin the permissions of the diffrent segments. These
 /// hold induvidual discriptors of each segments and denote the permissions of these files.
@@ -57,7 +57,7 @@ impl SystemSegmentDiscriptor {
     #[inline]
     pub fn new_tss(tss: &TaskStateSegment) -> Self {
         let mut segment = SegmentDiscriptor::null();
-        let limit = size_of::<TaskStateSegment>();
+        let limit = size_of::<TaskStateSegment>() - 1;
 
         let base = tss as *const TaskStateSegment as u64;
 
@@ -257,16 +257,6 @@ impl SegmentDiscriptor {
     }
 }
 
-/// A structure to load data into the GDTR register
-#[derive(Debug)]
-#[repr(C, packed(2))]
-struct gdtr {
-    /// The size in bytes of the GDT
-    size: u16,
-    /// The virual adress of the GDT
-    offset: u64,
-}
-
 /// The global discriptor table
 /// Readmore here : <https://wiki.osdev.org/Global_Descriptor_Table>.
 #[repr(C, packed)]
@@ -303,7 +293,7 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
     #[inline]
     pub const fn append_segment_discriptor(
         &mut self,
-        segment: &SegmentDiscriptor,
+        segment: SegmentDiscriptor,
     ) -> Option<SegmentSelector> {
         let level = segment.get_privilage_level();
         let index = self.size;
@@ -311,7 +301,7 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
         if self.size as usize > SIZE {
             return None;
         }
-        self.gdt.0[index as usize] = *segment;
+        self.gdt.0[index as usize] = segment;
         Some(SegmentSelector(index << 3 | level as u16))
     }
 
@@ -321,17 +311,27 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
         system: &SystemSegmentDiscriptor,
     ) -> Option<SegmentSelector> {
         let (part_1, part_2) = system.as_split();
-        let selector = self.append_segment_discriptor(&part_1)?;
-        self.append_segment_discriptor(&part_2)?;
+        let selector = self.append_segment_discriptor(part_1)?;
+        self.append_segment_discriptor(part_2)?;
         Some(selector)
     }
 
     /// Loads the new GDT into the GDTR
     pub fn load(&self) {
+        // A structure to load data into the GDTR register
+        #[derive(Debug)]
+        #[repr(C, packed(2))]
+        struct Gdtr {
+            /// The size in bytes of the GDT
+            size: u16,
+            /// The virual adress of the GDT
+            offset: u64,
+        }
+
         let offset = &self.gdt as *const GlobalDescriptorTable<SIZE> as u64;
         let size = (self.size as usize * size_of::<SegmentDiscriptor>()) as u16 - 1;
-        let gdtr = &gdtr { offset, size };
-        let gdtr = gdtr as *const gdtr as u64;
+        let gdtr = &Gdtr { offset, size };
+        let gdtr = gdtr as *const Gdtr as u64;
         unsafe {
             asm!("lgdt [{gdtr}]", gdtr =  in(reg) gdtr, options(readonly, nostack, preserves_flags));
         }
@@ -343,21 +343,31 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
 #[repr(transparent)]
 pub struct SegmentSelector(u16);
 
-impl SegmentSelector {
-    /// Loads the segment from a u16.
-    #[inline]
-    pub fn new(data: u16) -> SegmentSelector {
-        Self(data)
+impl Display for SegmentSelector {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "Index: {},\tTI: {}\tRPL: {}",
+            (self.0 >> 3) as usize,
+            if self.0 & 0x04 == 0 { "GDT" } else { "LDT" },
+            unsafe { transmute::<u8, PrivalageLevel>((self.0 & 0x03) as u8) }
+        )
     }
+}
 
+impl SegmentSelector {
     /// Loads loads the segment selector from the CS register.
     #[inline]
-    pub fn from_cs() -> SegmentSelector {
+    pub fn from_cs() -> Self {
         let data: u16;
         unsafe {
             asm!("mov {data:x}, cs", data= out(reg) data, options(nostack, preserves_flags) );
         }
         Self(data)
+    }
+
+    pub fn from(value: u16) -> Self {
+        Self(value)
     }
 
     /// Saves the code selector into the CS register

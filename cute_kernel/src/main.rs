@@ -7,16 +7,17 @@
 extern crate alloc;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
-use core::panic::PanicInfo;
+use core::{panic::PanicInfo, ptr::null_mut};
 use cute_kernel::{
     acpi::{SDTables, load_sd_table},
     display::init_writer,
     memory::{self},
     multi_tasking::{self, cooprative::Task, executor::Executor, scheduler},
     println,
+    tables::DiscriptorTables,
     tasks::keyboard,
 };
-use x86_64::VirtAddr;
+use x86_64::{VirtAddr, instructions::interrupts::int3};
 
 use bootloader_api::config::{BootloaderConfig, Mapping};
 
@@ -110,7 +111,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 }
 
 /// This function is called on panic.
-#[cfg(not(test))]
+// #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
@@ -118,8 +119,8 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 //this funciton is called on panics in tests
-#[cfg(test)]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    cute_kernel::test_panic_handler(info)
-}
+// #[cfg(test)]
+// #[panic_handler]
+// fn panic(info: &PanicInfo) -> ! {
+//     cute_kernel::test_panic_handler(info)
+// }

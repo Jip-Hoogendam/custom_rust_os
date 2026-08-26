@@ -1,6 +1,12 @@
-pub const DOUBLE_FAULT_IST_INDEX: usize = 0;
+use crate::println;
+
+/// This struct is to define a IST to use in the idt.
+#[repr(packed, C)]
+#[derive(Clone, Copy, Debug)]
+pub struct InteruptStack(u8);
 
 /// This is the bitmap to control access to the ports.
+#[derive(Debug, Clone, Copy)]
 pub struct IOBitmap {
     bitmap: [u8; 8193],
 }
@@ -47,6 +53,9 @@ impl IOBitmap {
     }
 }
 
+/// The global type of a interupt stack table
+type InteruptStackTable = [u64; 7];
+
 /// The stack state segment is mostly used to point to stacks that should be used. With the interupt
 /// stack table being used to point to stacks to use in case of an interupt. And the stack to use
 /// when escalating to diffrent privalage levels.
@@ -59,11 +68,11 @@ pub struct TaskStateSegment {
     reserved_2: [u32; 2],
     /// These are used to describe what stack to use during a interupt. Set the ist in the
     /// interupt descriptor to anything higher then 0 to use one of these stacks during those interupts.
-    interupt_stack_table: [u64; 7],
+    interupt_stack_table: InteruptStackTable,
     reserved_3: u32,
     reserved_4: u16,
     iopb: u16,
-    io_bitmap: IOBitmap,
+    pub io_bitmap: IOBitmap,
 }
 
 impl Default for TaskStateSegment {
@@ -96,7 +105,21 @@ impl TaskStateSegment {
 
     /// Sets a the stack for an interupt discriptor.
     #[inline]
-    pub const fn set_interupt_stack(&mut self, index: usize, ptr: u64) {
+    const fn set_interupt_stack(&mut self, index: usize, ptr: u64) {
         self.interupt_stack_table[index] = ptr;
+    }
+
+    /// Pushes a stack to be used for a IST
+    #[inline]
+    pub fn push_ist(&mut self, ptr: u64) -> Option<InteruptStack> {
+        // Hacky way to get the length since i cant use .len() on a packed field....
+        let interupt_stack_table_length = size_of::<InteruptStackTable>() / size_of::<u64>();
+        for index in 0..interupt_stack_table_length {
+            if self.interupt_stack_table[index] == 0 {
+                self.interupt_stack_table[index] = ptr;
+                return Some(InteruptStack(index as u8 + 1u8));
+            }
+        }
+        None
     }
 }

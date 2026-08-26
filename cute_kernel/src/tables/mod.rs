@@ -1,79 +1,60 @@
-use lazy_static::lazy_static;
-
 use crate::{
-    PrivalageLevel, println,
+    PrivalageLevel,
     tables::{
         gdt::{
-            GlobalDescriptorTableBuilder, SegmentDiscriptor, SegmentSelector,
-            SystemSegmentDiscriptor,
+            GlobalDescriptorTable, GlobalDescriptorTableBuilder, SegmentDiscriptor,
+            SegmentSelector, SystemSegmentDiscriptor,
         },
-        tss::{DOUBLE_FAULT_IST_INDEX, TaskStateSegment},
+        idt::InteruptDiscriptorTable,
+        tss::TaskStateSegment,
     },
 };
 
-/// A structure to save the Segment selectors and GDT in.
-struct GDTSelectors {
+// A structure to save all the discriptor tables in. Once these get loaded they must stay in memory
+// else it may cause errors.
+//
+// Has build in functions to acess the idt, gdt or tss.
+pub struct DiscriptorTables {
     gdt: GlobalDescriptorTableBuilder<{ crate::variables::GDT_TABLE_SIZE }>,
+    idt: InteruptDiscriptorTable,
     tss: TaskStateSegment,
-    kernel_code_segment: SegmentSelector,
-    kernel_data_segment: SegmentSelector,
-    userspace_code_segment: SegmentSelector,
-    userspace_data_segment: SegmentSelector,
-    task_state_segment: SegmentSelector,
 }
 
-lazy_static! {
-static ref GDT: GDTSelectors = {
-
-    let mut tss = TaskStateSegment::new();
-    tss.set_interupt_stack(DOUBLE_FAULT_IST_INDEX, {
-        const STACK_SIZE: usize = 4096 * 5;
-        static mut STACK: [u8; STACK_SIZE] = [0; STACK_SIZE];
-        unsafe { (&raw const STACK).add(STACK_SIZE) as u64 }
-    });
-
-    let mut gdt = GlobalDescriptorTableBuilder::new();
-    // Kernal code segment
-    let mut kernel_code_segment = SegmentDiscriptor::new_segment(0, usize::MAX);
-    kernel_code_segment.set_executable(true);
-    let kernel_code_segment = gdt.append_segment_discriptor(&kernel_code_segment).expect("GDT not large enough");
-    // Kernal data segment
-    let mut kernel_data_segment = SegmentDiscriptor::new_segment(0, usize::MAX);
-    kernel_data_segment.set_executable(false);
-    let kernel_data_segment = gdt.append_segment_discriptor(&kernel_data_segment).expect("GDT not large enough");
-
-    // Userspace code segment
-    let mut userspace_code_segment = SegmentDiscriptor::new_segment(0, usize::MAX);
-    userspace_code_segment.set_executable(true).set_privalage_level(PrivalageLevel::Ring3);
-    let userspace_code_segment = gdt.append_segment_discriptor(&userspace_code_segment).expect("GDT not large enough");
-    // Userspace data segment
-    let mut userspace_data_segment = SegmentDiscriptor::new_segment(0, usize::MAX);
-    userspace_data_segment.set_executable(false).set_privalage_level(PrivalageLevel::Ring3);
-    let userspace_data_segment =  gdt.append_segment_discriptor(&userspace_data_segment).expect("GDT not large enough");
-
-    // Task state segment
-    let task_state_segment = SystemSegmentDiscriptor::new_tss(&tss);
-    let task_state_segment = gdt.append_system_discriptor(&task_state_segment).expect("GDT not large enough");
-
-
-    GDTSelectors{
-        gdt,
-        tss,
-        kernel_code_segment,
-        kernel_data_segment,
-        userspace_code_segment,
-        userspace_data_segment,
-        task_state_segment,
+impl DiscriptorTables {
+    #[must_use]
+    pub const fn init() -> Self {
+        let tss = TaskStateSegment::new();
+        let idt = InteruptDiscriptorTable::new();
+        let gdt = GlobalDescriptorTableBuilder::new();
+        DiscriptorTables { gdt, tss, idt }
     }
-};
-}
 
-pub fn init() {
-    println!("Loading GDT!");
-    GDT.gdt.load();
-    GDT.kernel_code_segment.set_as_cs_register();
-    GDT.kernel_data_segment.set_as_ds_register();
-    GDT.task_state_segment.set_as_tss_register();
+    // Gets the idt as a mutable pointer
+    #[inline]
+    #[must_use]
+    pub fn get_mut_idt(&mut self) -> &mut InteruptDiscriptorTable {
+        &mut self.idt
+    }
+
+    /// Gets the tss as a mutable pointer
+    #[inline]
+    #[must_use]
+    pub fn get_mut_tss(&mut self) -> &mut TaskStateSegment {
+        &mut self.tss
+    }
+
+    /// Gets the gdt as a mutable pointer
+    #[inline]
+    #[must_use]
+    pub fn get_mut_gdt(
+        &mut self,
+    ) -> &mut GlobalDescriptorTableBuilder<{ crate::variables::GDT_TABLE_SIZE }> {
+        &mut self.gdt
+    }
+
+    pub fn load(&mut self) {
+        self.gdt.load();
+    }
 }
 
 pub mod gdt;

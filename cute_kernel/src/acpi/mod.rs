@@ -6,7 +6,7 @@ pub mod sdt;
 use madt::MADT;
 use sdt::{SDP, SDT, SDTHeader};
 
-use crate::{acpi::sdt::ShortSDTHeader, println};
+use crate::acpi::sdt::ShortSDTHeader;
 
 #[derive(Debug)]
 #[non_exhaustive]
