@@ -2,7 +2,6 @@ use x86_64::{PhysAddr, VirtAddr};
 
 use super::{SDTLoadErrors, SDTables};
 
-
 /// The structure of the RSDP.
 /// When loading a checksum needs to be created by adding the first 20 bytes of the RSDP
 /// togeter in a u8 and seeing if it counts up to 0.
@@ -79,6 +78,9 @@ impl SDP<'_> {
     ///
     /// # Safety
     /// This function assumes that the rsdp given pointer is actually pointing to a rsdp header.
+    ///
+    /// # Errors
+    /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
     pub unsafe fn load_sdp(
         rsdp_addr: u64,
         phys_mem_offset: VirtAddr,
@@ -222,11 +224,10 @@ impl<'a> Iterator for SDTIter<'a> {
                 Some(item)
             }
             SDTType::RSDT => {
-                let item =
-                    SDTables::load(
-                        u64::from(unsafe { *self.pointer.cast::<u32>() + self.offset as u32 }),
-                    )
-                    .ok()?;
+                let item = SDTables::load(u64::from(unsafe {
+                    *self.pointer.cast::<u32>() + self.offset as u32
+                }))
+                .ok()?;
                 unsafe {
                     self.pointer = self.pointer.add(size_of::<u32>());
                 }

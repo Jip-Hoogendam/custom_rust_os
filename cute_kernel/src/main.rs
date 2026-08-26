@@ -7,17 +7,16 @@
 extern crate alloc;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
-use core::{panic::PanicInfo, ptr::null_mut};
+use core::panic::PanicInfo;
 use cute_kernel::{
     acpi::{SDTables, load_sd_table},
     display::init_writer,
     memory::{self},
     multi_tasking::{self, cooprative::Task, executor::Executor, scheduler},
     println,
-    tables::DiscriptorTables,
     tasks::keyboard,
 };
-use x86_64::{VirtAddr, instructions::interrupts::int3};
+use x86_64::VirtAddr;
 
 use bootloader_api::config::{BootloaderConfig, Mapping};
 

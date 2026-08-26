@@ -21,14 +21,14 @@ pub fn init_writer(framebuffer_info: &'static mut FrameBuffer) {
 }
 
 #[doc(hidden)]
-pub fn _print(args: fmt::Arguments) {
+pub fn display_print(args: fmt::Arguments) {
     use core::fmt::Write;
     let _ = WRITER.lock().write_fmt(args);
 }
 
 #[macro_export]
 macro_rules! print {
-    ($($arg:tt)*) => ($crate::display::_print(format_args!($($arg)*)));
+    ($($arg:tt)*) => ($crate::display::display_print(format_args!($($arg)*)));
 }
 
 #[macro_export]

@@ -42,6 +42,10 @@ pub enum SDTables {
 
 impl<'a> SDTables {
     #[inline]
+    /// Returns the loaded SDT table.
+    ///
+    /// # Errors
+    /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
     pub fn load(adress: u64) -> Result<&'a Self, SDTLoadErrors> {
         Ok(unsafe { SDTHeader::load(adress)?.cast::<Self>() })
     }
@@ -57,6 +61,9 @@ pub enum SDTLoadErrors {
 ///
 /// # Safety
 /// This requires that the provided rsdp pointer is pointing at the adress of the rsdp
+///
+/// # Errors
+/// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
 pub unsafe fn load_sd_table<'a>(
     rsdp_ptr: u64,
     phys_mem_offset: VirtAddr,
