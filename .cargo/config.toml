@@ -1,2 +1,15 @@
+[target.x86_64-unknown-none]
+runner = ["simple_runner"]
 [unstable]
+panic-abort-tests = true
 bindeps = true
+[alias]
+kernel-test = [
+  "test",
+  "-p",
+  "cute_kernel",
+  "--target",
+  "x86_64-unknown-none",
+  "--features",
+  "qemu-test",
+]

@@ -7,12 +7,19 @@
 extern crate alloc;
 
 use alloc::vec;
-use bootloader_api::{BootInfo, entry_point};
+use bootloader_api::config::Mapping;
+use bootloader_api::{BootInfo, BootloaderConfig, entry_point};
 use core::panic::PanicInfo;
 use cute_kernel::multi_tasking::premtive::thread;
 use cute_kernel::{halt_loop, println};
 
-entry_point!(main);
+pub static BOOTLOADER_CONFIG: BootloaderConfig = {
+    let mut config = BootloaderConfig::new_default();
+    config.mappings.physical_memory = Some(Mapping::Dynamic);
+    config
+};
+
+entry_point!(main, config = &BOOTLOADER_CONFIG);
 
 fn main(boot_info: &'static mut BootInfo) -> ! {
     use cute_kernel::allocator;
@@ -36,10 +43,7 @@ fn fake_task() {
 #[test_case]
 fn create_many_tasks() {
     let mut alloc = vec![];
-    for _i in 0..20 {
+    for _i in 0..200 {
         alloc.push(thread(fake_task));
     }
-
-    //we dont have a real wait yet :/
-    for _i in 0..1000000 {}
 }

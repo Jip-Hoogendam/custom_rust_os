@@ -2,6 +2,8 @@ use core::{mem, ops::Div};
 
 use bootloader_api::info::FrameBuffer;
 
+use crate::serial_println;
+
 /// A pixel in the BGR format type
 /// Used to write to frame buffers
 #[derive(Clone)]
@@ -203,7 +205,7 @@ impl FrameBufferWriter for DisplayBuffer<'_> {
     }
 
     fn shift(&mut self, pixels: usize) {
-        let start = self.width() as usize * self.stride as usize * pixels;
+        let start = self.stride as usize * pixels;
         self.frame_buffer.copy_within(start.., 0);
     }
 
@@ -231,6 +233,6 @@ impl FrameBufferWriter for DisplayBuffer<'_> {
 
     #[allow(clippy::cast_possible_truncation)]
     fn height(&self) -> u32 {
-        (self.frame_buffer.len() / self.stride as usize) as u32
+        (self.frame_buffer.len() / self.pixel_size as usize / self.stride as usize) as u32
     }
 }

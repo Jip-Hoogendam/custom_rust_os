@@ -9,6 +9,10 @@ keywords = ["OS", "Kernel"]
 categories = ["OS", "Kernel"]
 description = "The kernal of my own personal operating system"
 
+
+[features]
+qemu-test = []
+
 [dependencies]
 bootloader_api = "=0.11.15"
 spin = "0.5.2"
@@ -46,12 +50,3 @@ features = ["spin_no_std"]
 version = "0.3.4"
 default-features = false
 features = ["alloc"]
-
-
-[[test]]
-name = "should_panic"
-harness = false
-
-[[test]]
-name = "stack_overflow"
-harness = false

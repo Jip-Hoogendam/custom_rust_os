@@ -116,8 +116,7 @@ impl TaskStateSegment {
         for index in 0..interupt_stack_table_length {
             if self.interupt_stack_table[index] == 0 {
                 self.interupt_stack_table[index] = ptr;
-                #[allow(clippy::cast_possible_truncation)]
-                return Some(InteruptStack(index as u8 + 1u8));
+                return Some(InteruptStack(u8::try_from(index).ok()? + 1));
             }
         }
         None

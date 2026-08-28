@@ -1,4 +1,8 @@
+use core::ptr::from_raw_parts;
+
 use x86_64::{PhysAddr, VirtAddr};
+
+use crate::{println, serial_println};
 
 use super::{SDTLoadErrors, SDTables};
 
@@ -205,10 +209,10 @@ impl SDTHeader {
 
 /// A handly iterator to loop over the SDT records.
 pub struct SDTIter<'a> {
-    sdt: SDT<'a>,
     offset: u64,
-    pointer: *const u8,
-    end: *const u8,
+    sdt: SDT<'a>,
+    index: usize,
+    table: &'a [u8],
 }
 
 /// A iterator of System discriptor tables.
@@ -216,29 +220,22 @@ impl<'a> Iterator for SDTIter<'a> {
     type Item = &'a SDTables;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pointer >= self.end {
+        if self.index >= self.table.len() {
             return None;
         }
         match self.sdt.typ {
             SDTType::XSDT => {
-                #[allow(clippy::cast_ptr_alignment)]
-                let item =
-                    SDTables::load(unsafe { *self.pointer.cast::<u64>() + self.offset }).ok()?;
-                unsafe {
-                    self.pointer = self.pointer.add(size_of::<u64>());
-                }
+                let ptr =
+                    u64::from_le_bytes(self.table[self.index..self.index + 8].try_into().ok()?);
+                let item = SDTables::load(ptr + self.offset).ok()?;
+                self.index += size_of::<u64>();
                 Some(item)
             }
             SDTType::RSDT => {
-                #[allow(clippy::cast_possible_truncation)]
-                #[allow(clippy::cast_ptr_alignment)]
-                let item = SDTables::load(u64::from(unsafe {
-                    *self.pointer.cast::<u32>() + self.offset as u32
-                }))
-                .ok()?;
-                unsafe {
-                    self.pointer = self.pointer.add(size_of::<u32>());
-                }
+                let ptr =
+                    u32::from_le_bytes(self.table[self.index..self.index + 8].try_into().ok()?);
+                let item = SDTables::load(u64::from(ptr) + self.offset).ok()?;
+                self.index += size_of::<u64>();
                 Some(item)
             }
         }
@@ -264,14 +261,15 @@ pub struct SDT<'a> {
 impl<'a> SDT<'a> {
     #[must_use]
     pub const fn tables_iter(self, offset: u64) -> SDTIter<'a> {
+        let length = self.header.length as usize - size_of::<SDTHeader>();
         let pointer = core::ptr::from_ref::<SDTHeader>(self.header);
-        let end = unsafe { pointer.cast::<u8>().add(self.header.length as usize) };
         let pointer = unsafe { pointer.add(1) }.cast::<u8>();
+        let slice = unsafe { &*from_raw_parts::<[u8]>(pointer, length) };
         SDTIter {
             offset,
+            index: 0,
             sdt: self,
-            pointer,
-            end,
+            table: slice,
         }
     }
 

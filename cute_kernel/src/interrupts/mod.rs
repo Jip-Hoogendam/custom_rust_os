@@ -11,12 +11,12 @@ use crate::{
 
 /// This holds the current stack frame of the interuptt
 #[repr(C)]
-struct InterruptStackFrame {
-    ip: usize,
-    cs: usize,
-    flags: usize,
-    sp: usize,
-    ss: usize,
+pub struct InterruptStackFrame {
+    pub ip: usize,
+    pub cs: usize,
+    pub flags: usize,
+    pub sp: usize,
+    pub ss: usize,
 }
 
 impl Display for InterruptStackFrame {

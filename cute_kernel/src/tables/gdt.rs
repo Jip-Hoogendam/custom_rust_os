@@ -350,6 +350,18 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
 #[repr(transparent)]
 pub struct SegmentSelector(u16);
 
+impl Into<usize> for SegmentSelector {
+    fn into(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl From<u16> for SegmentSelector {
+    fn from(value: u16) -> Self {
+        SegmentSelector(value)
+    }
+}
+
 impl Display for SegmentSelector {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
@@ -374,9 +386,14 @@ impl SegmentSelector {
         Self(data)
     }
 
+    #[inline]
     #[must_use]
-    pub const fn from(value: u16) -> Self {
-        Self(value)
+    pub fn from_ss() -> Self {
+        let data: u16;
+        unsafe {
+            asm!("mov {data:x}, ss", data= out(reg) data, options(nostack, preserves_flags) );
+        }
+        Self(data)
     }
 
     /// Saves the code selector into the CS register

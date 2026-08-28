@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["cute_kernel"]
+members = ["cute_kernel", "simple_runner"]
 
 [package]
 name = "owos-prime"
@@ -13,10 +13,19 @@ keywords = ["OS"]
 categories = ["OS"]
 description = "This is my personal hobby operating system."
 
+[profile.dev]
+panic = "abort"
+
+[profile.test]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
 
 [dependencies]
 ovmf-prebuilt = "0.2.4"
 
 [build-dependencies]
-cute_kernel = { path = "cute_kernel", artifact = "bin", target = "x86_64-unknown-none" }
+cute_kernel = { path = "cute_kernel", test = false, artifact = "bin", target = "x86_64-unknown-none" }
 bootloader = "=0.11.15"

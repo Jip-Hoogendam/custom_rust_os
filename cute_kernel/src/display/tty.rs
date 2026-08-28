@@ -2,7 +2,10 @@ use alloc::fmt;
 use core::cmp;
 use noto_sans_mono_bitmap::{FontWeight, RasterHeight, get_raster, get_raster_width};
 
-use crate::display::frame_buffer::{BGRColor, FrameBufferWriter};
+use crate::{
+    display::frame_buffer::{BGRColor, FrameBufferWriter},
+    serial_println,
+};
 
 pub struct Font {
     /// The height of the font
@@ -141,12 +144,15 @@ where
         let new_y =
             self.cursor_y + self.options.vertical_space + self.options.font.raster_height.val();
         self.cursor_x = self.options.padding;
-
-        let diff = if new_y > self.display_buffer.height() as usize - self.options.padding {
+        let diff = if new_y
+            > self.display_buffer.height() as usize
+                - self.options.padding
+                - self.options.font.raster_height.val()
+        {
             let new_new_y = self.display_buffer.height() as usize
                 - self.options.padding
                 - self.options.font.raster_height.val();
-            new_y - new_new_y
+            new_y - new_new_y - self.options.vertical_space + self.options.font.raster_height.val()
         } else {
             self.cursor_y = new_y;
             return;

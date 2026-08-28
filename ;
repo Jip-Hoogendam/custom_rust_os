@@ -6,7 +6,7 @@ pub mod sdt;
 use madt::MADT;
 use sdt::{SDP, SDT, SDTHeader};
 
-use crate::{acpi::sdt::ShortSDTHeader, println};
+use crate::{acpi::sdt::ShortSDTHeader, println, serial_println};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -16,25 +16,25 @@ pub enum SDTables {
     /// This table contains all the information of each (I/O) APIC.
     ///
     /// This signature is adjusted to `APIC`.
-    MADT(MADT) = u32::from_be_bytes(*b"APIC"),
+    MADT(MADT) = u32::from_le_bytes(*b"APIC"),
     /// # Boot grapics Resource Table.
     ///
     /// Holds data about the displayed image during boot.
-    BGRT(ShortSDTHeader) = u32::from_be_bytes(*b"BGRT"),
-    DTST(ShortSDTHeader) = u32::from_be_bytes(*b"DTST"),
-    FADT(ShortSDTHeader) = u32::from_be_bytes(*b"FACP"), // signature: FACP
+    BGRT(ShortSDTHeader) = u32::from_le_bytes(*b"BGRT"),
+    DTST(ShortSDTHeader) = u32::from_le_bytes(*b"DTST"),
+    FADT(ShortSDTHeader) = u32::from_le_bytes(*b"FACP"),
     /// #Root System Discriptor table.
     ///
     /// This is here for completeness.
     /// Holds refrences to all other discriptor tables.
-    RSDT(ShortSDTHeader) = u32::from_be_bytes(*b"RSDT"),
-    SRAT(ShortSDTHeader) = u32::from_be_bytes(*b"SRAT"),
-    SSDT(ShortSDTHeader) = u32::from_be_bytes(*b"SSDT"),
+    RSDT(ShortSDTHeader) = u32::from_le_bytes(*b"RSDT"),
+    SRAT(ShortSDTHeader) = u32::from_le_bytes(*b"SRAT"),
+    SSDT(ShortSDTHeader) = u32::from_le_bytes(*b"SSDT"),
     /// # Extended Root System Discriptor Table.
     ///
     /// This is here for completeness.
     /// Holds refrences to all other discriptor tables.
-    XSDT(ShortSDTHeader) = u32::from_be_bytes(*b"XSDT"),
+    XSDT(ShortSDTHeader) = u32::from_le_bytes(*b"XSDT"),
 
     /// Not yet defined by me
     UNKOWN(ShortSDTHeader),
@@ -42,14 +42,12 @@ pub enum SDTables {
 
 impl<'a> SDTables {
     #[inline]
+    /// Returns the loaded SDT table.
+    ///
+    /// # Errors
+    /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
     pub fn load(adress: u64) -> Result<&'a Self, SDTLoadErrors> {
-        let header = unsafe { SDTHeader::load(adress)? };
-        println!(
-            "Header: {} : APIC as u32 : {}",
-            unsafe { *(header as *const SDTHeader).cast::<u32>() },
-            u32::from_be_bytes(*b"BGRT")
-        );
-        Ok(header.cast::<SDTables>())
+        Ok(unsafe { SDTHeader::load(adress)?.cast::<Self>() })
     }
 }
 
@@ -63,20 +61,13 @@ pub enum SDTLoadErrors {
 ///
 /// # Safety
 /// This requires that the provided rsdp pointer is pointing at the adress of the rsdp
-pub unsafe fn load_dsp_table(rsdp_ptr: u64, phys_mem_offset: VirtAddr) {
-    println!("Loading SDP");
-    let sdp = unsafe { SDP::load_sdp(rsdp_ptr, phys_mem_offset) };
-    println!("SDP loaded!\nLoading SDT");
-
-    let sdt = SDT::load(sdp, phys_mem_offset).expect("Failed to load SDT");
-    println!("SDT Loaded!\n SDT: {:?}", sdt);
-
-    for table in sdt.tables_iter(phys_mem_offset.as_u64()) {
-        println!("{:?}", table);
-        if let SDTables::MADT(mdat) = table {
-            for record in mdat.records() {
-                println!("Record: {:?}", record);
-            }
-        }
-    }
+///
+/// # Errors
+/// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
+pub unsafe fn load_sd_table<'a>(
+    rsdp_ptr: u64,
+    phys_mem_offset: VirtAddr,
+) -> Result<SDT<'a>, SDTLoadErrors> {
+    let sdp = unsafe { SDP::load_sdp(rsdp_ptr, phys_mem_offset)? };
+    SDT::load(&sdp, phys_mem_offset)
 }

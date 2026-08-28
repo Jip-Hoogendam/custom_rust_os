@@ -1,8 +1,51 @@
-use core::ptr::null_mut;
+use core::{mem::MaybeUninit, ptr};
 
-use alloc::boxed::Box;
+use crate::{
+    interrupts::InterruptStackFrame,
+    multi_tasking::premtive::{stack::Stack, thread_exit},
+    println,
+    tables::gdt::SegmentSelector,
+};
 
-use crate::multi_tasking::premtive::{stack::Stack, thread_exit};
+//the context saved in a interupt so whe can just "subscribe" the thread to the
+//scheduler. This means that in a context switch one time it will get picked up and get called!
+#[repr(C, packed)]
+struct RingZeroInteruptContext {
+    r15: usize,
+    r14: usize,
+    r13: usize,
+    r12: usize,
+    r11: usize,
+    r10: usize,
+    r9: usize,
+    r8: usize,
+    rbx: usize,
+    rbp: usize,
+    rdi: usize,
+    rsi: usize,
+    rdx: usize,
+    rcx: usize,
+    rax: usize,
+
+    interupt_stack: InterruptStackFrame,
+
+    unwind: usize, //unwind function
+}
+
+const RFLAGS_IF: usize = 1 << 9;
+
+/// Allows 6 options to be passed to the function that runs the thread according to the x86 calling
+/// convention.
+#[derive(Default)]
+pub struct ThreadOptions {
+    /// These are not in array to make creation and calling easyer
+    pub argument_0: usize,
+    pub argument_1: usize,
+    pub argument_2: usize,
+    pub argument_3: usize,
+    pub argument_4: usize,
+    pub argument_5: usize,
+}
 
 #[derive(Debug)]
 pub struct Thread {
@@ -10,64 +53,21 @@ pub struct Thread {
     pub rsp: u64,
 }
 
-//the context saved in a interupt so whe can just "subscribe" the thread to the
-//scheduler. This means that in a context switch one time it will get picked up and get called!
-#[repr(C)]
-struct RingZeroInteruptContext {
-    r15: u64,
-    r14: u64,
-    r13: u64,
-    r12: u64,
-    r11: u64,
-    r10: u64,
-    r9: u64,
-    r8: u64,
-    rbx: u64,
-    rbp: u64,
-    rdi: u64,
-    rsi: u64,
-    rdx: u64,
-    rcx: u64,
-    rax: u64,
-
-    //pushed by cpu
-    rip: u64,
-    cs: u64,
-    rflags: u64,
-    rsp: u64,
-    ss: u64,
-
-    unwind: u64, //unwind function
-}
-
-const KERNEL_CS: u64 = 0x08;
-const RFLAGS_IF: u64 = 1 << 9;
-
-extern "C" fn trampoline(arg: *mut u8) {
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-        Box::from_raw(arg.cast::<Box<dyn FnOnce() + Send>>())();
-    }
-}
-
 impl Thread {
-    #[inline]
     #[must_use]
     pub const fn init_root() -> Self {
         Self {
-            stack: Stack {
-                begin: null_mut(),
-                end: null_mut(),
-            },
+            stack: Stack::null_stack(),
             rsp: 0,
         }
     }
 
-    pub fn spawn(stack: Stack, capture: *mut Box<dyn FnOnce() + Send>) -> Self {
-        let sp = ((stack.end as usize) & !0xF) as *mut u8;
+    #[must_use]
+    pub fn spawn(mut stack: Stack, function: *const (), options: &ThreadOptions) -> Self {
+        let mut stack_default: MaybeUninit<usize> = MaybeUninit::new(0);
+        let sp = ptr::from_mut(stack.get_base().unwrap_or(&mut stack_default)).cast::<u8>();
 
         //setup the stack of the thread
-        #[allow(clippy::cast_ptr_alignment)]
         let init_state = unsafe {
             sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>())
                 .cast::<RingZeroInteruptContext>()
@@ -76,13 +76,13 @@ impl Thread {
         unsafe {
             (*init_state).rax = 0;
             (*init_state).rbx = 0;
-            (*init_state).rcx = 0;
-            (*init_state).rdx = 0;
-            (*init_state).rsi = 0;
-            (*init_state).rdi = capture.cast::<u8>() as u64;
+            (*init_state).rcx = options.argument_3;
+            (*init_state).rdx = options.argument_2;
+            (*init_state).rsi = options.argument_1;
+            (*init_state).rdi = options.argument_0;
             (*init_state).rbp = 0;
-            (*init_state).r8 = 0;
-            (*init_state).r9 = 0;
+            (*init_state).r8 = options.argument_4;
+            (*init_state).r9 = options.argument_5;
             (*init_state).r10 = 0;
             (*init_state).r11 = 0;
             (*init_state).r12 = 0;
@@ -91,80 +91,18 @@ impl Thread {
             (*init_state).r15 = 0;
 
             //Some special flags for the interupt
-            (*init_state).rflags = RFLAGS_IF;
-            (*init_state).cs = KERNEL_CS;
-            (*init_state).rsp = sp.byte_sub(8) as usize as u64;
-            (*init_state).ss = 0x0;
+            (*init_state).interupt_stack.flags = RFLAGS_IF;
+            (*init_state).interupt_stack.cs = SegmentSelector::from_cs().into();
+            (*init_state).interupt_stack.sp = sp.byte_sub(8) as usize;
+            (*init_state).interupt_stack.ss = SegmentSelector::from_ss().into();
 
             //unwind function
-            (*init_state).unwind = thread_exit as *const () as u64;
+            (*init_state).unwind = thread_exit as *const () as usize;
 
             //entry point
-            (*init_state).rip = trampoline as *const () as u64;
+            (*init_state).interupt_stack.ip = function as usize;
         }
 
-        // println!(
-        //     "pointer =  {:?}\nstack ptr = {:?}, \nhead ={:?},\nprobe = {:#x}\nunwind = {:#x}",
-        //     (*init_state).rip as *const (),
-        //     sp,
-        //     init_state,
-        //     (((init_state as *mut u64).add(2)) as *mut u8) as usize,
-        //     (*init_state).unwind
-        // );
-        Self {
-            stack,
-            rsp: (init_state as u64),
-        }
-    }
-
-    pub fn init_fn(stack: Stack, entry: fn()) -> Self {
-        let sp = ((stack.end as usize) & !0xF) as *mut u8;
-
-        //setup the stack of the thread
-        #[allow(clippy::cast_ptr_alignment)]
-        let init_state = unsafe {
-            sp.byte_sub(core::mem::size_of::<RingZeroInteruptContext>())
-                .cast::<RingZeroInteruptContext>()
-        };
-
-        unsafe {
-            (*init_state).rax = 0;
-            (*init_state).rbx = 0;
-            (*init_state).rcx = 0;
-            (*init_state).rdx = 0;
-            (*init_state).rsi = 0;
-            (*init_state).rdi = 0;
-            (*init_state).rbp = 0;
-            (*init_state).r8 = 0;
-            (*init_state).r9 = 0;
-            (*init_state).r10 = 0;
-            (*init_state).r11 = 0;
-            (*init_state).r12 = 0;
-            (*init_state).r13 = 0;
-            (*init_state).r14 = 0;
-            (*init_state).r15 = 0;
-
-            //Some special flags for the interupt
-            (*init_state).rflags = RFLAGS_IF;
-            (*init_state).cs = KERNEL_CS;
-            (*init_state).rsp = sp.byte_sub(8) as usize as u64;
-            (*init_state).ss = 0x0;
-
-            //unwind function
-            (*init_state).unwind = thread_exit as *const () as u64;
-
-            //entry point
-            (*init_state).rip = entry as *const () as u64;
-        }
-
-        // println!(
-        //     "pointer =  {:?}\nstack ptr = {:?}, \nhead ={:?},\nprobe = {:#x}\nunwind = {:#x}",
-        //     (*init_state).rip as *const (),
-        //     sp,
-        //     init_state,
-        //     (((init_state as *mut u64).add(2)) as *mut u8) as usize,
-        //     (*init_state).unwind
-        // );
         Self {
             stack,
             rsp: (init_state as u64),

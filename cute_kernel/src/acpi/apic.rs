@@ -11,6 +11,7 @@
 /// [os-dev apic](https://wiki.osdev.org/APIC)
 use core::{
     arch::x86_64::__cpuid,
+    mem::transmute,
     ptr::{read_volatile, write_volatile},
 };
 
@@ -152,20 +153,14 @@ impl APIC {
     /// Writes to a APIC register.
     #[inline]
     fn read_addr(&self, addr: APICRegisters) -> u32 {
-        let pointer = core::ptr::from_ref::<Self>(self);
-        #[allow(clippy::cast_ptr_alignment)]
-        unsafe {
-            read_volatile(pointer.add(addr as usize).cast::<u32>())
-        }
+        unsafe { read_volatile(self.registers[addr as usize] as *const u32) }
     }
 
     /// Read a register from a APIC.
     #[inline]
     fn write_addr(&mut self, addr: APICRegisters, data: u32) {
-        let pointer = core::ptr::from_mut::<Self>(self);
-        #[allow(clippy::cast_ptr_alignment)]
         unsafe {
-            write_volatile(pointer.add(addr as usize).cast::<u32>(), data);
+            write_volatile(self.registers[addr as usize] as *mut u32, data);
         };
     }
 

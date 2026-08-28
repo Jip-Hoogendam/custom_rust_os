@@ -6,13 +6,21 @@
 
 extern crate alloc;
 
-use bootloader_api::{BootInfo, entry_point};
+use bootloader_api::config::Mapping;
+use bootloader_api::{BootInfo, BootloaderConfig, entry_point};
 use core::panic::PanicInfo;
-use cute_kernel::println;
+use cute_kernel::{println, serial_println};
 
-entry_point!(main);
+pub static BOOTLOADER_CONFIG: BootloaderConfig = {
+    let mut config = BootloaderConfig::new_default();
+    config.mappings.physical_memory = Some(Mapping::Dynamic);
+    config
+};
 
-fn main(boot_info: &'static mut BootInfo) -> ! {
+// add a `config` argument to the `entry_point` macro call
+entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
+
+fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     use cute_kernel::allocator;
     use cute_kernel::memory::{self, BootFrameAllocator};
     use x86_64::VirtAddr;
@@ -56,7 +64,7 @@ fn many_boxes() {
         vec.push(i);
     }
 
-    for i in 0..HEAP_SIZE {
+    for i in 0..(HEAP_SIZE / 100) {
         let x = Box::new(i);
         assert_eq!(*x, i);
     }

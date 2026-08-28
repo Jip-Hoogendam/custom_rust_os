@@ -4,8 +4,8 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 #![feature(abi_x86_interrupt)]
+#![feature(ptr_metadata)]
 #![warn(clippy::all)]
-// enable these for fun !
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]
 #![warn(clippy::cargo)]
@@ -62,6 +62,10 @@ pub static DT: spin::Mutex<DiscriptorTables> = spin::Mutex::new(DiscriptorTables
 /// # Panics
 /// panics if any `DiscriptorTables` is full.
 pub fn init() {
+    #[cfg(feature = "qemu-test")]
+    {
+        serial_println!("CuteKernelInit");
+    }
     //---- setup gdt
     let mut dt = DT.lock();
     // Kernal code segment
@@ -154,10 +158,27 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 #[cfg(test)]
 use bootloader_api::{BootInfo, entry_point};
 
+#[cfg(test)]
+use crate::display::init_writer;
 use crate::tables::{
     DiscriptorTables,
     gdt::{SegmentDiscriptor, SystemSegmentDiscriptor},
 };
+
+/// This function is called on panic.
+#[cfg(not(feature = "qemu-test"))]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    println!("{}", info);
+    halt_loop();
+}
+
+//this funciton is called on panics in tests
+#[cfg(feature = "qemu-test")]
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    test_panic_handler(info)
+}
 
 #[cfg(test)]
 entry_point!(test_kernel_main);
@@ -165,7 +186,10 @@ entry_point!(test_kernel_main);
 /// Entry point for `cargo test`
 #[cfg(test)]
 #[unsafe(no_mangle)]
-fn test_kernel_main(_boot_info: &'static mut BootInfo) -> ! {
+fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
+    if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
+        init_writer(framebuffer);
+    }
     init();
     test_main();
     halt_loop();

@@ -7,7 +7,6 @@
 extern crate alloc;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
-use core::panic::PanicInfo;
 use cute_kernel::{
     acpi::{SDTables, load_sd_table},
     display::init_writer,
@@ -23,7 +22,6 @@ use bootloader_api::config::{BootloaderConfig, Mapping};
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
     let mut config = BootloaderConfig::new_default();
     config.mappings.physical_memory = Some(Mapping::Dynamic);
-    config.mappings.framebuffer = Mapping::Dynamic;
     config
 };
 
@@ -91,12 +89,11 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         scheduler::SCHEDULER.lock().init();
     }
 
-    println!("Scheduler initlized");
-
     #[cfg(test)]
     test_main();
 
-    multi_tasking::premtive::spawn(move || {
+    println!("Scheduler initlized");
+    let i = multi_tasking::premtive::spawn(move || {
         for c in 0..100 {
             println!("this is a test ! {}", c);
         }
@@ -110,18 +107,3 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     println!("Launchinig into executor");
     executor.run();
 }
-
-/// This function is called on panic.
-// #[cfg(not(test))]
-#[panic_handler]
-fn panic(info: &PanicInfo) -> ! {
-    println!("{}", info);
-    cute_kernel::halt_loop();
-}
-
-//this funciton is called on panics in tests
-// #[cfg(test)]
-// #[panic_handler]
-// fn panic(info: &PanicInfo) -> ! {
-//     cute_kernel::test_panic_handler(info)
-// }

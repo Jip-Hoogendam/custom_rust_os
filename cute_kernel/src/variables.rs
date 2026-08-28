@@ -7,3 +7,5 @@ pub const GDT_TABLE_SIZE: usize = 7;
 
 ///The allocated size of the interupt stacks
 pub type InteruptStack = [u8; 4096 * 64];
+
+pub const KERNEL_THREAD_STACK_SIZE: usize = 1024 * 16;

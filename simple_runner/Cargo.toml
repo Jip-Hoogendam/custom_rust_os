@@ -1,0 +1,8 @@
+[package]
+name = "simple_runner"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ovmf-prebuilt = "0.2.4"
+bootloader = "=0.11.15"
