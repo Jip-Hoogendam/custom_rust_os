@@ -20,6 +20,7 @@ pub mod memory;
 pub mod msr;
 pub mod multi_tasking;
 pub mod serial;
+pub mod sync;
 pub mod tables;
 pub mod tasks;
 pub mod variables;
@@ -61,7 +62,10 @@ pub static DT: spin::Mutex<DiscriptorTables> = spin::Mutex::new(DiscriptorTables
 ///
 /// # Panics
 /// panics if any `DiscriptorTables` is full.
-pub fn init() {
+pub fn init<T>(interupt_gaurd: &InteruptGaurd<T>)
+where
+    T: InteruptController,
+{
     #[cfg(feature = "qemu-test")]
     {
         serial_println!("CuteKernelInit");
@@ -108,8 +112,8 @@ pub fn init() {
         .append_system_discriptor(&task_state_segment)
         .expect("GDT not large enough");
 
-    interrupts::load_interupts(&mut dt, kernel_code_segment);
-    dt.get_mut_idt().load();
+    interrupts::load_interupts(&mut dt, kernel_code_segment, interupt_gaurd);
+    dt.get_mut_idt().load(interupt_gaurd);
 
     dt.get_mut_gdt().load();
     // Load registers
@@ -159,10 +163,13 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 use bootloader_api::{BootInfo, entry_point};
 
 #[cfg(test)]
-use crate::display::init_writer;
-use crate::tables::{
-    DiscriptorTables,
-    gdt::{SegmentDiscriptor, SystemSegmentDiscriptor},
+use crate::{display::init_writer, interrupts::interupt_gaurd::BlockInterupts};
+use crate::{
+    interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
+    tables::{
+        DiscriptorTables,
+        gdt::{SegmentDiscriptor, SystemSegmentDiscriptor},
+    },
 };
 
 /// This function is called on panic.
@@ -190,7 +197,9 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
     if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
         init_writer(framebuffer);
     }
-    init();
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        init(g);
+    });
     test_main();
     halt_loop();
 }

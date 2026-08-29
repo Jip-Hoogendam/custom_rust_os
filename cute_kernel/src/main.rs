@@ -6,13 +6,22 @@
 
 extern crate alloc;
 
+use core::{cell::UnsafeCell, mem::MaybeUninit};
+
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
-    acpi::{SDTables, load_sd_table},
+    acpi::{
+        SDTables,
+        apic::{APIC, APICClockDivider, LOCAL_APIC},
+        load_sd_table,
+        madt::record::LocalAPICOveride,
+    },
     display::init_writer,
+    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{self},
     multi_tasking::{self, cooprative::Task, executor::Executor, scheduler},
     println,
+    tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
 };
 use x86_64::VirtAddr;
@@ -67,11 +76,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         todo!("Load no multi prosessing or APICS");
     };
 
-    let apic = unsafe { mdat.get_local_apic(phys_mem_offset.as_u64()) };
-
-    x86_64::instructions::interrupts::disable();
-    cute_kernel::init();
-    x86_64::instructions::interrupts::enable();
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        cute_kernel::init(g);
+    });
 
     use cute_kernel::allocator;
     use cute_kernel::memory::BootFrameAllocator;
@@ -88,16 +95,35 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     {
         scheduler::SCHEDULER.lock().init();
     }
+    println!("Scheduler initlized");
+
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        println!("Setting apic timer");
+        mdat.init_apic(phys_mem_offset.as_u64(), &LOCAL_APIC, g);
+        println!("APIC init!");
+        LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
+        LOCAL_APIC.set_timer_interupt_vector(
+            InteruptDiscriptorIndex::TaskSwitch,
+            cute_kernel::acpi::apic::APICTimerMode::OneShot,
+            g,
+        );
+    });
 
     #[cfg(test)]
     test_main();
 
-    println!("Scheduler initlized");
-    let i = multi_tasking::premtive::spawn(move || {
-        for c in 0..100 {
-            println!("this is a test ! {}", c);
-        }
-    });
+    for i in 0..20 {
+        multi_tasking::premtive::spawn(move || {
+            for i in (i * 100)..((i + 1) * 100) {
+                println!("Test thead {}", i);
+            }
+        });
+    }
+    // let i = multi_tasking::premtive::spawn(move || {
+    //     for c in 0..100 {
+    //         println!("this is a test ! {}", c);
+    //     }
+    // });
 
     println!("Creating Async executor");
     let mut executor = Executor::default();

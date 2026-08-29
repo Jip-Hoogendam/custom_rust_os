@@ -1,5 +1,8 @@
 /// A module to read the Multiple APIC Description Table.
-use crate::acpi::sdt::ShortSDTHeader;
+use crate::{
+    acpi::sdt::ShortSDTHeader,
+    interrupts::interupt_gaurd::{self, InteruptController, InteruptGaurd},
+};
 
 use super::apic::APIC;
 
@@ -13,14 +16,11 @@ pub struct MADT {
 }
 
 impl MADT {
-    /// Gets a refrence to the local apic.
-    ///
-    /// This also gets the overided record if it exists.
-    ///
-    /// # Safety
-    /// Should only be called once as each call will map to a the same APIC.
-    #[must_use]
-    pub unsafe fn get_local_apic<'a>(&self, offset: u64) -> &'a mut APIC {
+    /// Searches for the apic and initlizes it.
+    pub fn init_apic<T>(&self, offset: u64, apic: &APIC, interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
         let mut pointer = u64::from(self.local_apic_addr);
 
         // properly overide the record.
@@ -31,7 +31,7 @@ impl MADT {
             }
         }
 
-        unsafe { &mut *((pointer + offset) as *mut u8).cast::<APIC>() }
+        unsafe { apic.init((pointer + offset) as *mut u32, interupt_gaurd) }
     }
 
     /// Creates a iterator of all the attached records
@@ -181,7 +181,8 @@ impl Iterator for MADTRecordIterator {
             return None;
         }
         let header = unsafe { &*self.pointer.cast::<MADTRecordHeader>() };
-        let record = unsafe { &*core::ptr::from_ref::<MADTRecordHeader>(header).cast::<MADTRecord>() };
+        let record =
+            unsafe { &*core::ptr::from_ref::<MADTRecordHeader>(header).cast::<MADTRecord>() };
         self.pointer = unsafe { self.pointer.add(header.record_length as usize) };
         Some(record)
     }

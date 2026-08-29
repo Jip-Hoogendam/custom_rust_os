@@ -152,7 +152,7 @@ where
             let new_new_y = self.display_buffer.height() as usize
                 - self.options.padding
                 - self.options.font.raster_height.val();
-            new_y - new_new_y - self.options.vertical_space + self.options.font.raster_height.val()
+            new_y - new_new_y + self.options.vertical_space
         } else {
             self.cursor_y = new_y;
             return;

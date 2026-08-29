@@ -1,6 +1,7 @@
 use x86_64::VirtAddr;
 
 pub mod apic;
+pub mod ioapic;
 pub mod madt;
 pub mod sdt;
 use madt::MADT;

@@ -2,6 +2,7 @@ use core::{arch::asm, mem::transmute};
 
 use crate::{
     PrivalageLevel,
+    interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     tables::{gdt::SegmentSelector, tss::InteruptStack},
 };
 
@@ -300,16 +301,22 @@ impl InteruptDiscriptorTable {
     }
 
     /// Sets a discriptor at a specific index
-    pub const fn set_discriptor(
+    pub const fn set_discriptor<T>(
         &mut self,
         index: InteruptDiscriptorIndex,
         discriptor: InteruptDiscriptor,
-    ) {
+        _interupt_gaurd: &InteruptGaurd<T>,
+    ) where
+        T: InteruptController,
+    {
         self.discriptors[index as usize] = discriptor;
     }
 
     /// Loads the idt into the idtr
-    pub fn load(&self) {
+    pub fn load<T>(&self, _interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
         #[derive(Debug)]
         #[repr(C, packed(2))]
         struct Idtr {

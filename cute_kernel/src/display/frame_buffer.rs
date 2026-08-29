@@ -205,7 +205,7 @@ impl FrameBufferWriter for DisplayBuffer<'_> {
     }
 
     fn shift(&mut self, pixels: usize) {
-        let start = self.stride as usize * pixels;
+        let start = self.stride as usize * self.pixel_size as usize * pixels;
         self.frame_buffer.copy_within(start.., 0);
     }
 

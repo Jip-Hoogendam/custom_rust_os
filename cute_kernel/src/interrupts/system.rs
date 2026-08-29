@@ -26,7 +26,7 @@ pub extern "C" fn task_switch() {
         call schedule
         mov rsp, rax
    
-        call notfiy_end_of_timer_interrupt
+        // call notfiy_end_of_timer_interrupt
         pop r15
         pop r14
         pop r13

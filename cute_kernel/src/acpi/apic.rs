@@ -10,19 +10,24 @@
 /// [multiprocessing support for hobby oses explained](http://www.osdever.net/tutorials/view/multiprocessing-support-for-hobby-oses-explained)
 /// [os-dev apic](https://wiki.osdev.org/APIC)
 use core::{
-    arch::x86_64::__cpuid,
-    mem::transmute,
+    cell::UnsafeCell,
+    mem::MaybeUninit,
     ptr::{read_volatile, write_volatile},
 };
 
 use x86_64::instructions::port::Port;
 
-use crate::msr::{MSRValues, read_cpu_msr, write_cpu_msr};
+use crate::{
+    interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
+    msr::{MSRValues, read_cpu_msr, write_cpu_msr},
+    tables::idt::InteruptDiscriptorIndex,
+};
 
 /// A module containing all APIC registers.
+#[derive(Debug, Clone, Copy)]
 #[allow(unused)]
 #[repr(u32)]
-pub enum APICRegisters {
+pub enum APICRegister {
     /// ## permissions : `Read/Write`.
     /// TODO: Figure out why we have write perms for this.
     APICId = 0x020,
@@ -57,7 +62,14 @@ pub enum APICRegisters {
 
     /// # Function
     ///
-    /// This register is used to enable and disable the local APIC it also contains
+    /// This register is used to enable and disable the local APIC it also contains the vector for
+    /// spurious inteupts. These can be ignored but should be caught.
+    ///
+    /// |bit(s)|discription|
+    /// |-|-|
+    /// |0-7| Spurious interupt vector indexes to the idt. Lower 4 bits(0-3) are hardwired to 1|
+    /// |8| Set this to 1 to enable the APIC|
+    /// |9| Indicates focus checking. TODO: see what focus checking does|
     ///
     /// ## permissions: `Read/Write`.
     SpuriousInteruptVector = 0x0F0,
@@ -126,7 +138,25 @@ pub enum APICRegisters {
     CurrentCountRegister = 0x390,
 
     /// ## permissions: `Read/Write`
-    DeviceConfiguration = 0x3E0,
+    DivideConfiguration = 0x3E0,
+}
+
+#[repr(u8)]
+pub enum APICClockDivider {
+    Div1 = 0b1011,
+    Div2 = 0b0000,
+    Div4 = 0b0001,
+    Div8 = 0b0010,
+    Div16 = 0b0011,
+    Div32 = 0b1000,
+    Div64 = 0b1001,
+    Div128 = 0b1010,
+}
+
+#[repr(u32)]
+pub enum APICTimerMode {
+    Periodic = 0b0010_0000_0000_0000_0000, // Sets the 17th bit
+    OneShot = 0,
 }
 
 const PIC1_DATA: u16 = 0x21;
@@ -138,30 +168,109 @@ const APIC_CPUID_OFFSET: u32 = 1 << 9;
 const IA32_APIC_BASE_MSR: u32 = 0x1B;
 const IA32_APIC_BASE_MSR_ENABLE: u32 = 0x800;
 
+#[repr(C, packed(4))]
+struct APICRegisters([u32; 256]);
+
+impl APICRegisters {
+    #[inline]
+    pub fn read(&self, addr: APICRegister) -> u32 {
+        unsafe { read_volatile(&raw const self.0[addr as usize / 4]) }
+    }
+
+    pub fn write(&mut self, addr: APICRegister, data: u32) {
+        unsafe {
+            write_volatile(&raw mut self.0[addr as usize / 4], data);
+        };
+    }
+}
+
 /// A structure to work with the local APIC.
 ///
-
-#[derive(Debug)]
-#[repr(C, packed)]
+/// This heavely skirts around rusts safety boundrys. And that is for good reason. Each apic is
+/// local to each prosssor and so as long as we garuntee that no task switching happens while
+/// changeing the apic(aka disable interupts) then we know for shure that we can safely interact
+/// with the apic.
+#[repr(C)]
 pub struct APIC {
     /// The registers of the apic.
     /// These are all aligned to 16 bytes.
-    registers: [u8; 0x3F0],
+    registers: UnsafeCell<MaybeUninit<&'static mut APICRegisters>>,
 }
 
+// Local Apics are only one one cpu. So can be shared across procsesor.
+unsafe impl Send for APIC {}
+unsafe impl Sync for APIC {}
+
 impl APIC {
-    /// Writes to a APIC register.
-    #[inline]
-    fn read_addr(&self, addr: APICRegisters) -> u32 {
-        unsafe { read_volatile(self.registers[addr as usize] as *const u32) }
+    /// # Safety
+    /// The apic msut be pointing to a valid apic address
+    #[must_use]
+    pub const fn uninit() -> Self {
+        Self {
+            registers: UnsafeCell::new(MaybeUninit::uninit()),
+        }
     }
 
-    /// Read a register from a APIC.
     #[inline]
-    fn write_addr(&mut self, addr: APICRegisters, data: u32) {
-        unsafe {
-            write_volatile(self.registers[addr as usize] as *mut u32, data);
-        };
+    fn set_registers(&self, registers: &'static mut APICRegisters) {
+        unsafe { &mut *self.registers.get() }.write(registers);
+    }
+
+    #[inline]
+    fn registers_mut(&self) -> &mut APICRegisters {
+        unsafe { (*self.registers.get()).assume_init_mut() }
+    }
+
+    #[inline]
+    fn registers(&self) -> &APICRegisters {
+        unsafe { (*self.registers.get()).assume_init_ref() }
+    }
+
+    #[inline]
+    pub fn set_timer_interupt_vector<T>(
+        &self,
+        vector: InteruptDiscriptorIndex,
+        mode: APICTimerMode,
+        _interupt_gaurd: &InteruptGaurd<T>,
+    ) where
+        T: InteruptController,
+    {
+        self.registers_mut()
+            .write(APICRegister::LVTTimer, vector as u32 | mode as u32);
+    }
+
+    #[inline]
+    pub fn set_timer_div<T>(&self, div: APICClockDivider, _interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
+        self.registers_mut()
+            .write(APICRegister::DivideConfiguration, div as u32);
+    }
+
+    #[inline]
+    pub fn set_timer_intial_count<T>(&self, count: u32, _interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
+        self.registers_mut()
+            .write(APICRegister::IntialCounterRegister, count);
+    }
+
+    #[inline]
+    pub fn disable_timer<T>(&self, interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
+        self.set_timer_intial_count(0, interupt_gaurd);
+    }
+
+    #[inline]
+    pub fn end_iterupts<T>(&self, _interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
+        self.registers_mut().write(APICRegister::EOI, 0);
     }
 
     /// intilizes the APIC
@@ -170,13 +279,10 @@ impl APIC {
     /// # Safety
     /// This function assumes that the APIC is pointing to a correct APIC registers. And this
     /// requires the cpu to suport the Model specific register instructions.
-    pub unsafe fn init(&mut self) {
-        let cpuid = __cpuid(1);
-        debug_assert!(
-            cpuid.edx & APIC_CPUID_OFFSET != 0,
-            "cpu does not provide a APIC"
-        );
-
+    pub unsafe fn init<T>(&self, addr: *mut u32, _interupt_gaurd: &InteruptGaurd<T>)
+    where
+        T: InteruptController,
+    {
         //Disable pics
         unsafe {
             Port::new(PIC1_DATA).write(PIC_OFF);
@@ -185,7 +291,7 @@ impl APIC {
 
         // Enable the apic in case if it was not enabled.
         let MSRValues { eax, edx } = unsafe { read_cpu_msr(IA32_APIC_BASE_MSR) };
-        let base = u64::from(eax & 0xFFFF_F000) | (u64::from(edx & 0xF) << 32);
+        let base = u64::from(eax & 0xFFFF_F000) | (u64::from(edx & 0x0F) << 32);
         unsafe {
             write_cpu_msr(
                 IA32_APIC_BASE_MSR,
@@ -196,6 +302,15 @@ impl APIC {
             );
         }
 
-        // set the SpuriousInteruptVector.
+        // sets the apic to the correct registers based off the pointer
+        self.set_registers(unsafe { &mut *addr.cast() });
+
+        // Enable apic by setting the SpuriousInteruptVector.
+        self.registers_mut().write(
+            APICRegister::SpuriousInteruptVector,
+            self.registers().read(APICRegister::SpuriousInteruptVector) | 0x100,
+        );
     }
 }
+
+pub static LOCAL_APIC: APIC = APIC::uninit();

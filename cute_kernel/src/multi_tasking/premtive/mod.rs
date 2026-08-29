@@ -1,4 +1,5 @@
 use crate::{
+    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     multi_tasking::{TaskId, premtive::tcb::ThreadOptions, scheduler::SCHEDULER},
     println,
     variables::KERNEL_THREAD_STACK_SIZE,
@@ -36,9 +37,9 @@ pub struct ThreadHandle {
 fn schedule(entry: *const (), options: &ThreadOptions) -> ThreadHandle {
     let stack = stack::Stack::new(KERNEL_THREAD_STACK_SIZE);
     let tcb = Thread::spawn(stack, entry, options);
-    x86_64::instructions::interrupts::disable();
-    let id = SCHEDULER.lock().schedule(tcb);
-    x86_64::instructions::interrupts::enable();
+    let id = InteruptGaurd::<BlockInterupts>::scope(|interupt_gaurd| {
+        SCHEDULER.lock().schedule(tcb, interupt_gaurd)
+    });
     ThreadHandle { id }
 }
 

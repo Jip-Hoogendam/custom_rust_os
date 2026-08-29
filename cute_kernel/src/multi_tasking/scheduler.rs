@@ -1,10 +1,13 @@
-use core::{num::NonZeroU64, ops::Bound};
+use core::{array, cmp::min, num::NonZeroU64, ops::Bound};
 
 use alloc::collections::BTreeMap;
 
 use crate::{
+    acpi::apic::LOCAL_APIC,
+    interrupts::interupt_gaurd::{self, InteruptAlreadyBlocked, InteruptController, InteruptGaurd},
     multi_tasking::{TaskId, premtive::tcb::Thread},
-    println,
+    serial_print,
+    variables::{TASK_COUNT_MAX, TASK_CYCLES_MAX, TASK_CYCLES_MIN, TASKS_SLOPE_FACTOR},
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -61,17 +64,22 @@ impl Scheduler {
         self.current_task = Some(id);
     }
 
-    pub fn schedule(&mut self, thread: Thread) -> TaskId {
+    pub fn schedule<T>(&mut self, thread: Thread, interupt_gaurd: &InteruptGaurd<T>) -> TaskId
+    where
+        T: InteruptController,
+    {
         let mut task_table = SCHEDULER_TABLE.lock();
         let id = TaskId::new();
-        task_table.insert(
-            id,
-            TaskInfo {
-                parent: self.current_task,
-                task: thread,
-                state: ProcState::Sleep,
-            },
-        );
+        let task_info = TaskInfo {
+            parent: self.current_task,
+            task: thread,
+            state: ProcState::Sleep,
+        };
+        if task_table.len() <= 1 {
+            let time = Self::compute_task_time(task_table.len(), &task_info);
+            LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
+        }
+        task_table.insert(id, task_info);
         id
     }
 
@@ -85,8 +93,34 @@ impl Scheduler {
         }
     }
 
+    /// Computes how much time the next thread gets. This does not yet allow giving more priority to
+    /// certain tasks
+    ///
+    /// # Function
+    /// Currently it computes the time based off the following functions where N is the number of
+    /// tasks, P is the number of prosessors  and f the amount of cycles to wait.
+    ///
+    /// f = (-(N/(`TASK_COUNT_MAX` * P)) + 1)^`TASKS_SLOPE_FACTOR` * (`TASK_CYCLES_MAN` - `TASK_CYCLES_MIX`) + `TASK_CYCLES_MIN`
+    fn compute_task_time(task_count: usize, _task: &TaskInfo) -> u32 {
+        const {
+            debug_assert!(TASK_COUNT_MAX > 1);
+            debug_assert!(TASK_CYCLES_MIN < TASK_CYCLES_MAX);
+        }
+        let task_count = min(task_count as u32, TASK_COUNT_MAX);
+        let n = (-(task_count as f32 / TASK_COUNT_MAX as f32)) + 1.;
+        let pow_n = [n; TASKS_SLOPE_FACTOR].iter().fold(1f32, |a, b| a * b);
+        (pow_n * (TASK_CYCLES_MAX - TASK_CYCLES_MIN) as f32) as u32 + TASK_CYCLES_MIN
+    }
+
     //Gives the next task that needs to be scheduled
-    pub fn next(&mut self, curr_stack: *mut u8) -> Option<NonZeroU64> {
+    pub fn next<T>(
+        &mut self,
+        curr_stack: *mut u8,
+        interupt_gaurd: &InteruptGaurd<T>,
+    ) -> Option<NonZeroU64>
+    where
+        T: InteruptController,
+    {
         let mut task_table = SCHEDULER_TABLE.lock();
         if task_table.is_empty() {
             return Some(unsafe { (curr_stack as u64).try_into().unwrap_unchecked() });
@@ -125,13 +159,10 @@ impl Scheduler {
         }
 
         self.current_task.map(|task| unsafe {
-            task_table
-                .get(&task)
-                .unwrap_unchecked()
-                .task
-                .rsp
-                .try_into()
-                .unwrap_unchecked()
+            let task_info = task_table.get(&task).unwrap_unchecked();
+            let time = Self::compute_task_time(task_table.len(), task_info);
+            LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
+            task_info.task.rsp.try_into().unwrap_unchecked()
         })
     }
 }
@@ -141,11 +172,12 @@ pub const fn init() {}
 //A simple custom scheduler for the task switch
 #[unsafe(no_mangle)]
 extern "C" fn schedule(stack: *mut u8) -> *mut u8 {
-    println!("ping!");
     loop {
-        if let Some(next) = SCHEDULER.lock().next(stack) {
+        let gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
+        if let Some(next) = SCHEDULER.lock().next(stack, &gaurd) {
             let next_stack: u64 = next.into();
-            return next_stack as *mut u8;
+            LOCAL_APIC.end_iterupts(&gaurd);
+            break next_stack as *mut u8;
         }
     }
 }

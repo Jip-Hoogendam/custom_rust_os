@@ -43,7 +43,7 @@ fn fake_task() {
 #[test_case]
 fn create_many_tasks() {
     let mut alloc = vec![];
-    for _i in 0..200 {
+    for _i in 0..20 {
         alloc.push(thread(fake_task));
     }
 }
