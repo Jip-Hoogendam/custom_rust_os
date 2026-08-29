@@ -1,10 +1,12 @@
-use core::{array, cmp::min, num::NonZeroU64, ops::Bound};
+use core::{array, cell::UnsafeCell, cmp::min, num::NonZeroU64, ops::Bound};
 
-use alloc::collections::BTreeMap;
+use alloc::{boxed::Box, collections::BTreeMap};
 
 use crate::{
     acpi::apic::LOCAL_APIC,
-    interrupts::interupt_gaurd::{self, InteruptAlreadyBlocked, InteruptController, InteruptGaurd},
+    interrupts::interupt_gaurd::{
+        self, InteruptAlreadyBlocked, InteruptCell, InteruptController, InteruptGaurd,
+    },
     multi_tasking::{TaskId, premtive::tcb::Thread},
     serial_print,
     variables::{TASK_COUNT_MAX, TASK_CYCLES_MAX, TASK_CYCLES_MIN, TASKS_SLOPE_FACTOR},
@@ -36,7 +38,8 @@ static SCHEDULER_TABLE: spin::Mutex<BTreeMap<TaskId, TaskInfo>> = spin::Mutex::n
 
 #[derive(Default)]
 pub struct Scheduler {
-    current_task: Option<TaskId>,
+    /// Scheduler should only change its own prosess while interuts are blocked.
+    current_tasks: InteruptCell<Box<[TaskId]>>,
 }
 
 unsafe impl Send for Scheduler {}
@@ -47,6 +50,9 @@ impl Scheduler {
     pub const fn new() -> Self {
         Self { current_task: None }
     }
+
+    #[inline]
+    pub const fn current_task(&self) -> TaskId {}
 
     #[inline]
     pub fn init(&mut self) {
@@ -64,7 +70,7 @@ impl Scheduler {
         self.current_task = Some(id);
     }
 
-    pub fn schedule<T>(&mut self, thread: Thread, interupt_gaurd: &InteruptGaurd<T>) -> TaskId
+    pub fn schedule<T>(&self, thread: Thread, interupt_gaurd: &InteruptGaurd<T>) -> TaskId
     where
         T: InteruptController,
     {
