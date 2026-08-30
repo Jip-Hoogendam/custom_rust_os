@@ -2,7 +2,6 @@ use core::ptr::from_raw_parts;
 
 use x86_64::{PhysAddr, VirtAddr};
 
-use crate::{println, serial_println};
 
 use super::{SDTLoadErrors, SDTables};
 

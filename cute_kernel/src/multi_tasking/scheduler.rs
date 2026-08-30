@@ -1,6 +1,4 @@
 use core::{
-    array,
-    cell::UnsafeCell,
     cmp::min,
     mem::{MaybeUninit, transmute},
     num::{NonZeroU64, NonZeroUsize},
@@ -14,13 +12,11 @@ use crate::{
     interrupts::{
         call_kill, call_switch_task,
         interupt_gaurd::{
-            self, BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
+            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
             InteruptGaurd,
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
-    serial_print,
-    sync::ConditionVariable,
     tools::cpu_id,
     variables::{TASK_COUNT_MAX, TASK_CYCLES_MAX, TASK_CYCLES_MIN, TASKS_SLOPE_FACTOR},
 };
@@ -54,7 +50,14 @@ pub struct Scheduler {
 unsafe impl Send for Scheduler {}
 unsafe impl Sync for Scheduler {}
 
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scheduler {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             current_tasks: InteruptCell::new(MaybeUninit::uninit()),
@@ -153,7 +156,7 @@ impl Scheduler {
             let interupt_gaurd = InteruptGaurd::<BlockInterupts>::block();
             let resource = NonZeroUsize::try_from(&raw const *resource as usize)
                 .unwrap_or(unsafe { NonZeroUsize::new(1).unwrap_unchecked() });
-            for (_task_id, task_info) in SCHEDULER_TABLE.lock().iter_mut() {
+            for task_info in SCHEDULER_TABLE.lock().values_mut() {
                 if let ProcState::Resource(blocked_resource) = task_info.state
                     && resource == blocked_resource
                 {

@@ -2,7 +2,6 @@ use core::{mem, ops::Div};
 
 use bootloader_api::info::FrameBuffer;
 
-use crate::serial_println;
 
 /// A pixel in the BGR format type
 /// Used to write to frame buffers

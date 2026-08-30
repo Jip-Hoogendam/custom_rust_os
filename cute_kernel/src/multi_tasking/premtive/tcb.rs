@@ -3,7 +3,6 @@ use core::{mem::MaybeUninit, ptr};
 use crate::{
     interrupts::InterruptStackFrame,
     multi_tasking::premtive::{stack::Stack, thread_exit},
-    println,
     tables::gdt::SegmentSelector,
 };
 

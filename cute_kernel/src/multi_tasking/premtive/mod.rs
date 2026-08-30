@@ -1,7 +1,6 @@
 use crate::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     multi_tasking::{TaskId, premtive::tcb::ThreadOptions, scheduler::SCHEDULER},
-    println,
     tools::cpu_id,
     variables::KERNEL_THREAD_STACK_SIZE,
 };
@@ -10,7 +9,6 @@ pub mod stack;
 pub mod tcb;
 use alloc::boxed::Box;
 use tcb::Thread;
-use x86_64::instructions::interrupts::enable_and_hlt;
 
 unsafe extern "C" {
     pub unsafe fn context_restore(old_rsp: *mut *mut u8, new_rsp: *mut *mut u8);

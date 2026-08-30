@@ -2,10 +2,7 @@ use alloc::fmt;
 use core::cmp;
 use noto_sans_mono_bitmap::{FontWeight, RasterHeight, get_raster, get_raster_width};
 
-use crate::{
-    display::frame_buffer::{BGRColor, FrameBufferWriter},
-    serial_println,
-};
+use crate::display::frame_buffer::{BGRColor, FrameBufferWriter};
 
 pub struct Font {
     /// The height of the font

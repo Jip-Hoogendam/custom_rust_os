@@ -6,16 +6,15 @@
 
 extern crate alloc;
 
-use core::{cell::UnsafeCell, mem::MaybeUninit, ops::Add};
+use core::ops::Add;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
     acpi::{
         SDTables,
-        apic::{APIC, APICClockDivider, LOCAL_APIC},
+        apic::{APICClockDivider, LOCAL_APIC},
         ioapic::IOAPIC,
         load_sd_table,
-        madt::record::LocalAPICOveride,
     },
     display::init_writer,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
@@ -134,8 +133,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         if *gaurd == 200 {
             println!("Mutex works *");
             break;
-        } else {
-        }
+        } 
     }
 
     println!("Creating Async executor");

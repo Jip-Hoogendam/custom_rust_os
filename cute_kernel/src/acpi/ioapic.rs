@@ -100,5 +100,5 @@ impl IoApic {
     }
 }
 
-/// FIXME: ScanMDAT for IRQ overides and multiple IoApic's
+/// FIXME: `ScanMDAT` for IRQ overides and multiple `IoApic`'s
 pub static IOAPIC: Mutex<IoApic> = Mutex::new(IoApic::uninit());

@@ -19,5 +19,5 @@ pub const TASK_CYCLES_MIN: u32 = 5000; //Cycles
 pub const TASK_CYCLES_MAX: u32 = 50000; //Cycles
 /// How many tasks need to be scheduled before the `TASK_CYCLES_MIN` is hit
 pub const TASK_COUNT_MAX: u32 = 100; //Theads
-/// How fast the clock_count reaches min.
+/// How fast the `clock_count` reaches min.
 pub const TASKS_SLOPE_FACTOR: usize = 3;

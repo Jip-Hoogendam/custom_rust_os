@@ -4,7 +4,6 @@ use spin::MutexGuard;
 
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
-    println,
     tables::{
         DiscriptorTables,
         gdt::SegmentSelector,

@@ -240,7 +240,8 @@ impl APIC {
         mode: APICTimerMode,
         _interupt_gaurd: &InteruptGaurd<T>,
     ) {
-        unsafe { self.registers_mut() }.write(APICRegister::LVTTimer, vector as u32 | mode as u32);
+        self.registers_mut()
+            .write(APICRegister::LVTTimer, vector as u32 | mode as u32);
     }
 
     #[inline]
@@ -249,7 +250,8 @@ impl APIC {
         div: APICClockDivider,
         _interupt_gaurd: &InteruptGaurd<T>,
     ) {
-        unsafe { self.registers_mut() }.write(APICRegister::DivideConfiguration, div as u32);
+        self.registers_mut()
+            .write(APICRegister::DivideConfiguration, div as u32);
     }
 
     #[inline]
@@ -258,7 +260,8 @@ impl APIC {
         count: u32,
         _interupt_gaurd: &InteruptGaurd<T>,
     ) {
-        unsafe { self.registers_mut() }.write(APICRegister::IntialCounterRegister, count);
+        self.registers_mut()
+            .write(APICRegister::IntialCounterRegister, count);
     }
 
     #[inline]

@@ -350,15 +350,15 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
 #[repr(transparent)]
 pub struct SegmentSelector(u16);
 
-impl Into<usize> for SegmentSelector {
-    fn into(self) -> usize {
-        self.0 as usize
+impl From<SegmentSelector> for usize {
+    fn from(val: SegmentSelector) -> Self {
+        val.0 as usize
     }
 }
 
 impl From<u16> for SegmentSelector {
     fn from(value: u16) -> Self {
-        SegmentSelector(value)
+        Self(value)
     }
 }
 

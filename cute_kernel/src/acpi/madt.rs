@@ -1,7 +1,7 @@
 /// A module to read the Multiple APIC Description Table.
 use crate::{
     acpi::{ioapic::IoApic, sdt::ShortSDTHeader},
-    interrupts::interupt_gaurd::{self, InteruptController, InteruptGaurd},
+    interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     println,
     sync::MutexGuard,
 };
