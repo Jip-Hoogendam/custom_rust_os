@@ -1,4 +1,6 @@
-use core::fmt::Display;
+use core::{arch::asm, fmt::Display};
+
+use spin::MutexGuard;
 
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
@@ -89,45 +91,25 @@ pub fn load_interupts<T>(
         InteruptDiscriptor::new_interupt(system::task_switch as *const () as u64, selector),
         interupt_gaurd,
     );
+
+    dt.get_mut_idt().set_discriptor(
+        InteruptDiscriptorIndex::TaskKill,
+        InteruptDiscriptor::new_interupt(system::task_switch as *const () as u64, selector),
+        interupt_gaurd,
+    );
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn notfiy_end_of_timer_interrupt() {
+#[inline]
+pub extern "C" fn call_kill() -> ! {
     unsafe {
-        PICS.lock()
-            .notify_end_of_interrupt(InterruptIndex::Timer.as_u8());
+        asm! {"int {x}", x = const(InteruptDiscriptorIndex::TaskKill as u8) ,options(nomem, nostack, noreturn) }
     }
 }
 
-#[unsafe(no_mangle)]
-extern "C" fn print_rsp(var: usize) {
-    println!("var : {:#x}", var);
-}
-
-//pic8259 interupts
-use pic8259::ChainedPics;
-use spin::{self, MutexGuard};
-
-pub const PIC_1_OFFSET: u8 = 32;
-pub const PIC_2_OFFSET: u8 = PIC_1_OFFSET + 8;
-
-pub static PICS: spin::Mutex<ChainedPics> =
-    spin::Mutex::new(unsafe { ChainedPics::new(PIC_1_OFFSET, PIC_2_OFFSET) });
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-pub enum InterruptIndex {
-    Timer = PIC_1_OFFSET,
-    Keyboard,
-}
-
-impl InterruptIndex {
-    const fn as_u8(self) -> u8 {
-        self as u8
-    }
-
-    fn as_usize(self) -> usize {
-        usize::from(self.as_u8())
+#[inline]
+pub extern "C" fn call_switch_task() {
+    unsafe {
+        asm! {"int {x}", x = const(InteruptDiscriptorIndex::TaskSwitch as u8) ,options(nomem, nostack) }
     }
 }
 

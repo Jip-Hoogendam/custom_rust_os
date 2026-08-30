@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-use core::{cell::UnsafeCell, mem::MaybeUninit};
+use core::{cell::UnsafeCell, mem::MaybeUninit, ops::Add};
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
@@ -21,6 +21,7 @@ use cute_kernel::{
     memory::{self},
     multi_tasking::{self, cooprative::Task, executor::Executor, scheduler},
     println,
+    sync::Mutex,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
 };
@@ -92,12 +93,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap allocation failed");
     println!("Heap created");
 
-    {
-        scheduler::SCHEDULER.lock().init();
-    }
-    println!("Scheduler initlized");
-
     InteruptGaurd::<BlockInterupts>::scope(|g| {
+        scheduler::SCHEDULER.init(4, g);
+        println!("Scheduler initlized");
         println!("Setting apic timer");
         mdat.init_apic(phys_mem_offset.as_u64(), &LOCAL_APIC, g);
         println!("APIC init!");
@@ -112,18 +110,26 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     #[cfg(test)]
     test_main();
 
+    static TEST_MUTEX: Mutex<i32> = Mutex::new(0);
+
     for i in 0..20 {
         multi_tasking::premtive::spawn(move || {
-            for i in (i * 100)..((i + 1) * 100) {
-                println!("Test thead {}", i);
+            for i in (i * 10)..((i + 1) * 10) {
+                let mut value = TEST_MUTEX.lock();
+                *value = value.add(1);
             }
         });
     }
-    // let i = multi_tasking::premtive::spawn(move || {
-    //     for c in 0..100 {
-    //         println!("this is a test ! {}", c);
-    //     }
-    // });
+
+    loop {
+        let gaurd = TEST_MUTEX.lock();
+        if *gaurd == 200 {
+            println!("Yippee");
+            break;
+        } else {
+            println!("Gaurd: {}", gaurd);
+        }
+    }
 
     println!("Creating Async executor");
     let mut executor = Executor::default();

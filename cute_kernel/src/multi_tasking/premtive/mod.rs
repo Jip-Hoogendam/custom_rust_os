@@ -2,6 +2,7 @@ use crate::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     multi_tasking::{TaskId, premtive::tcb::ThreadOptions, scheduler::SCHEDULER},
     println,
+    tools::cpu_id,
     variables::KERNEL_THREAD_STACK_SIZE,
 };
 
@@ -38,7 +39,7 @@ fn schedule(entry: *const (), options: &ThreadOptions) -> ThreadHandle {
     let stack = stack::Stack::new(KERNEL_THREAD_STACK_SIZE);
     let tcb = Thread::spawn(stack, entry, options);
     let id = InteruptGaurd::<BlockInterupts>::scope(|interupt_gaurd| {
-        SCHEDULER.lock().schedule(tcb, interupt_gaurd)
+        SCHEDULER.schedule(cpu_id(), tcb, interupt_gaurd)
     });
     ThreadHandle { id }
 }
@@ -62,8 +63,5 @@ pub fn thread(entry: fn()) -> ThreadHandle {
 
 //gets called when a thread has ended
 pub extern "C" fn thread_exit() -> ! {
-    SCHEDULER.lock().kill_current_task();
-    loop {
-        enable_and_hlt();
-    }
+    SCHEDULER.kill_current_task(cpu_id());
 }

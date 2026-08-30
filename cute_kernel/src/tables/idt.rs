@@ -274,6 +274,8 @@ pub enum InteruptDiscriptorIndex {
 
     /// This interupt is called when the APIC timer requests a task switch.
     TaskSwitch = 0x50,
+    TaskKill = 0x51,
+    TaskWait = 0x52,
 }
 
 /// The structure that houses the interupt discriptor table.

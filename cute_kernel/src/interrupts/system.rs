@@ -1,7 +1,7 @@
 use super::InterruptStackFrame;
 use crate::println;
 
-/// The task switch function that gets run on a timer interupt.
+/// the task switch function that gets run on a timer interupt.
 #[unsafe(naked)]
 pub extern "C" fn task_switch() {
     core::arch::naked_asm!(
@@ -26,7 +26,34 @@ pub extern "C" fn task_switch() {
         call schedule
         mov rsp, rax
    
-        // call notfiy_end_of_timer_interrupt
+        pop r15
+        pop r14
+        pop r13
+        pop r12
+        pop r11
+        pop r10
+        pop r9
+        pop r8
+        pop rbx
+        pop rbp
+        pop rdi
+        pop rsi
+        pop rdx
+        pop rcx
+        pop rax
+        iretq
+        "
+    );
+}
+
+/// Kills the current function
+#[unsafe(naked)]
+pub extern "C" fn task_kill() {
+    core::arch::naked_asm!(
+        r"
+        call schedule
+        mov rsp, rax
+   
         pop r15
         pop r14
         pop r13
