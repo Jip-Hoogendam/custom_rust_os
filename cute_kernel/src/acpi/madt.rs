@@ -1,7 +1,9 @@
 /// A module to read the Multiple APIC Description Table.
 use crate::{
-    acpi::sdt::ShortSDTHeader,
+    acpi::{ioapic::IoApic, sdt::ShortSDTHeader},
     interrupts::interupt_gaurd::{self, InteruptController, InteruptGaurd},
+    println,
+    sync::MutexGuard,
 };
 
 use super::apic::APIC;
@@ -17,10 +19,12 @@ pub struct MADT {
 
 impl MADT {
     /// Searches for the apic and initlizes it.
-    pub fn init_apic<T>(&self, offset: u64, apic: &APIC, interupt_gaurd: &InteruptGaurd<T>)
-    where
-        T: InteruptController,
-    {
+    pub fn init_apic<T: InteruptController>(
+        &self,
+        offset: u64,
+        apic: &APIC,
+        interupt_gaurd: &InteruptGaurd<T>,
+    ) {
         let mut pointer = u64::from(self.local_apic_addr);
 
         // properly overide the record.
@@ -32,6 +36,30 @@ impl MADT {
         }
 
         unsafe { apic.init((pointer + offset) as *mut u32, interupt_gaurd) }
+    }
+
+    /// # Panics
+    /// Panics if the `IoApic` can not be found
+    /// FIXME: allow mutliple IOAPICS
+    pub fn init_io_apic(&self, offset: u64, mut io_apic: MutexGuard<'_, IoApic>) {
+        for record in self.records() {
+            if let record::MADTRecord::IOAPIC(ioapic) = record {
+                let address = u64::from(ioapic.address) + offset;
+                println!(
+                    "add: {address:#x}, addr: {:#x}, read : {}",
+                    u64::from(ioapic.address),
+                    unsafe { &*(address as *mut usize) }
+                );
+                unsafe {
+                    io_apic.init(
+                        (address as *mut u32).as_mut().unwrap_unchecked(),
+                        ioapic.global_interupt_system_base,
+                    );
+                }
+                return;
+            }
+        }
+        panic!("No IO apic found");
     }
 
     /// Creates a iterator of all the attached records

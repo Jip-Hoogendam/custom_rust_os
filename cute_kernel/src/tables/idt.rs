@@ -157,9 +157,9 @@ impl InteruptDiscriptor {
     /// creates a new descriptor from the offset.
     /// The selector will be set to the value from the cs register.
     #[must_use]
-    pub const fn new_interupt(offset: u64, selector: SegmentSelector) -> Self {
+    pub fn new_interupt(offset: *const (), selector: SegmentSelector) -> Self {
         Self::null()
-            .set_offset(offset)
+            .set_offset(offset as u64)
             .set_selctor(selector)
             .set_atters(
                 InteruptDiscriptorAttributes::new()
@@ -170,9 +170,9 @@ impl InteruptDiscriptor {
     }
 
     #[must_use]
-    pub const fn new_trap(offset: u64, selector: SegmentSelector) -> Self {
+    pub fn new_trap(offset: *const (), selector: SegmentSelector) -> Self {
         Self::null()
-            .set_offset(offset)
+            .set_offset(offset as u64)
             .set_selctor(selector)
             .set_atters(
                 InteruptDiscriptorAttributes::new()
@@ -271,6 +271,9 @@ pub enum InteruptDiscriptorIndex {
     ControlProtectionException = 0x15,
 
     /// Any beyond this point are purely assinged by me. All are past the 0x32 to respect the IDT spec.
+
+    /// Keyboard interupts
+    Keyboard = 0x40,
 
     /// This interupt is called when the APIC timer requests a task switch.
     TaskSwitch = 0x50,

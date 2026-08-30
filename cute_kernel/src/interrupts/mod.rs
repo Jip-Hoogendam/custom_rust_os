@@ -65,12 +65,12 @@ pub fn load_interupts<T>(
     static DOUBLE_FAULT_STACK: InteruptStack = [0u8; _];
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::PageFault,
-        InteruptDiscriptor::new_trap(fault::page_fault_handeler as *const () as u64, selector),
+        InteruptDiscriptor::new_trap(fault::page_fault_handeler as *const (), selector),
         interupt_gaurd,
     );
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::Breakpoint,
-        InteruptDiscriptor::new_trap(system::breakpoint_handler as *const () as u64, selector),
+        InteruptDiscriptor::new_trap(system::breakpoint_handler as *const (), selector),
         interupt_gaurd,
     );
 
@@ -81,20 +81,26 @@ pub fn load_interupts<T>(
 
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::DoubleFault,
-        InteruptDiscriptor::new_trap(fault::double_fault_handler as *const () as u64, selector)
+        InteruptDiscriptor::new_trap(fault::double_fault_handler as *const (), selector)
             .set_stack(double_fault_stack),
         interupt_gaurd,
     );
 
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::TaskSwitch,
-        InteruptDiscriptor::new_interupt(system::task_switch as *const () as u64, selector),
+        InteruptDiscriptor::new_interupt(system::task_switch as *const (), selector),
         interupt_gaurd,
     );
 
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::TaskKill,
-        InteruptDiscriptor::new_interupt(system::task_switch as *const () as u64, selector),
+        InteruptDiscriptor::new_interupt(system::task_switch as *const (), selector),
+        interupt_gaurd,
+    );
+
+    dt.get_mut_idt().set_discriptor(
+        InteruptDiscriptorIndex::Keyboard,
+        InteruptDiscriptor::new_interupt(io::keyboard_interrupt_handler as *const (), selector),
         interupt_gaurd,
     );
 }

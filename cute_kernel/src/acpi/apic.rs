@@ -184,6 +184,8 @@ impl APICRegisters {
     }
 }
 
+pub type ApicId = u32;
+
 /// A structure to work with the local APIC.
 ///
 /// This heavely skirts around rusts safety boundrys. And that is for good reason. Each apic is
@@ -209,6 +211,11 @@ impl APIC {
         Self {
             registers: UnsafeCell::new(MaybeUninit::uninit()),
         }
+    }
+
+    #[inline]
+    pub fn getid(&self) -> ApicId {
+        self.registers().read(APICRegister::APICId)
     }
 
     #[inline]

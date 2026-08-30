@@ -13,6 +13,7 @@ use cute_kernel::{
     acpi::{
         SDTables,
         apic::{APIC, APICClockDivider, LOCAL_APIC},
+        ioapic::IOAPIC,
         load_sd_table,
         madt::record::LocalAPICOveride,
     },
@@ -98,6 +99,13 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         println!("Scheduler initlized");
         println!("Setting apic timer");
         mdat.init_apic(phys_mem_offset.as_u64(), &LOCAL_APIC, g);
+        println!("Setting up io apic");
+        mdat.init_io_apic(phys_mem_offset.as_u64(), IOAPIC.lock());
+        IOAPIC.lock().set_irq_physical(
+            cute_kernel::acpi::ioapic::IRQ::Keyboard,
+            InteruptDiscriptorIndex::Keyboard,
+            LOCAL_APIC.getid(),
+        );
         println!("APIC init!");
         LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
         LOCAL_APIC.set_timer_interupt_vector(
@@ -114,7 +122,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
     for i in 0..20 {
         multi_tasking::premtive::spawn(move || {
-            for i in (i * 10)..((i + 1) * 10) {
+            for _ in (i * 10)..((i + 1) * 10) {
                 let mut value = TEST_MUTEX.lock();
                 *value = value.add(1);
             }
@@ -124,10 +132,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     loop {
         let gaurd = TEST_MUTEX.lock();
         if *gaurd == 200 {
-            println!("Yippee");
+            println!("Mutex works *");
             break;
         } else {
-            println!("Gaurd: {}", gaurd);
         }
     }
 
