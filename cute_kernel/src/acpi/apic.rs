@@ -234,49 +234,40 @@ impl APIC {
     }
 
     #[inline]
-    pub fn set_timer_interupt_vector<T>(
+    pub fn set_timer_interupt_vector<T: InteruptController>(
         &self,
         vector: InteruptDiscriptorIndex,
         mode: APICTimerMode,
         _interupt_gaurd: &InteruptGaurd<T>,
-    ) where
-        T: InteruptController,
-    {
-        self.registers_mut()
-            .write(APICRegister::LVTTimer, vector as u32 | mode as u32);
+    ) {
+        unsafe { self.registers_mut() }.write(APICRegister::LVTTimer, vector as u32 | mode as u32);
     }
 
     #[inline]
-    pub fn set_timer_div<T>(&self, div: APICClockDivider, _interupt_gaurd: &InteruptGaurd<T>)
-    where
-        T: InteruptController,
-    {
-        self.registers_mut()
-            .write(APICRegister::DivideConfiguration, div as u32);
+    pub fn set_timer_div<T: InteruptController>(
+        &self,
+        div: APICClockDivider,
+        _interupt_gaurd: &InteruptGaurd<T>,
+    ) {
+        unsafe { self.registers_mut() }.write(APICRegister::DivideConfiguration, div as u32);
     }
 
     #[inline]
-    pub fn set_timer_intial_count<T>(&self, count: u32, _interupt_gaurd: &InteruptGaurd<T>)
-    where
-        T: InteruptController,
-    {
-        self.registers_mut()
-            .write(APICRegister::IntialCounterRegister, count);
+    pub fn set_timer_intial_count<T: InteruptController>(
+        &self,
+        count: u32,
+        _interupt_gaurd: &InteruptGaurd<T>,
+    ) {
+        unsafe { self.registers_mut() }.write(APICRegister::IntialCounterRegister, count);
     }
 
     #[inline]
-    pub fn disable_timer<T>(&self, interupt_gaurd: &InteruptGaurd<T>)
-    where
-        T: InteruptController,
-    {
+    pub fn disable_timer<T: InteruptController>(&self, interupt_gaurd: &InteruptGaurd<T>) {
         self.set_timer_intial_count(0, interupt_gaurd);
     }
 
     #[inline]
-    pub fn end_iterupts<T>(&self, _interupt_gaurd: &InteruptGaurd<T>)
-    where
-        T: InteruptController,
-    {
+    pub fn end_iterupts<T: InteruptController>(&self, _interupt_gaurd: &InteruptGaurd<T>) {
         self.registers_mut().write(APICRegister::EOI, 0);
     }
 
