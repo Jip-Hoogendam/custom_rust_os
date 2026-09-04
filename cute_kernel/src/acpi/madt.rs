@@ -102,7 +102,8 @@ pub mod record {
     }
 
     impl LocalAPIC {
-        pub fn can_be_used(&self) -> bool {
+        #[must_use]
+        pub const fn can_be_used(&self) -> bool {
             const APIC_CAN_IS_ENABLED: u32 = 0b0000_0001;
             const APIC_CAN_BE_ENABLED: u32 = 0b0000_0010;
 

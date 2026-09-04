@@ -80,7 +80,7 @@ impl Scheduler {
         interupt_gaurd: &InteruptGaurd<T>,
     ) {
         unsafe {
-            self.current_tasks.get(interupt_gaurd).assume_init_mut()[cpu_index as usize] = task
+            self.current_tasks.get(interupt_gaurd).assume_init_mut()[cpu_index as usize] = task;
         }
     }
 

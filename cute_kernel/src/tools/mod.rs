@@ -1,6 +1,5 @@
 use core::arch::asm;
 
-use crate::println;
 
 /// gets the current cpu id.
 #[inline]

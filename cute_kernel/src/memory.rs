@@ -74,6 +74,7 @@ pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static>
 }
 
 ///Gets the physical pointer to the level 4 page table
+#[must_use]
 pub fn get_l4_table_phys_ptr() -> u64 {
     use x86_64::registers::control::Cr3;
     let (l4_table_frame, _) = Cr3::read();

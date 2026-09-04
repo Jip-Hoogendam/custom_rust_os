@@ -1,5 +1,5 @@
 /// A module to interact with the GDT <https://wiki.osdev.org/Global_Descriptor_Table>.
-use crate::{PrivalageLevel, println, tables::tss::TaskStateSegment};
+use crate::{PrivalageLevel, tables::tss::TaskStateSegment};
 use core::{arch::asm, fmt::Display, mem::transmute};
 
 /// Used by the Global Descriptor table to determin the permissions of the diffrent segments. These
@@ -172,7 +172,7 @@ impl SegmentDiscriptor {
     #[inline]
     #[must_use]
     pub const fn is_system_segment(&self) -> bool {
-        !(self.access_byte & Self::S_MASK != 0)
+        (self.access_byte & Self::S_MASK == 0)
     }
 
     #[inline]
@@ -358,6 +358,7 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
         None
     }
 
+    #[must_use]
     pub fn find_data_segment(&self, level: PrivalageLevel) -> Option<SegmentSelector> {
         for index in 0..SIZE {
             let access_level = self.gdt.0[index].get_privilage_level();
@@ -373,6 +374,7 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
         None
     }
 
+    #[must_use]
     pub fn find_code_segment(&self, level: PrivalageLevel) -> Option<SegmentSelector> {
         for index in 0..SIZE {
             let access_level = self.gdt.0[index].get_privilage_level();
@@ -418,7 +420,7 @@ pub struct SegmentSelector(u16);
 
 impl From<SegmentSelector> for usize {
     fn from(val: SegmentSelector) -> Self {
-        val.0 as usize
+        val.0 as Self
     }
 }
 

@@ -1,7 +1,7 @@
 use core::{
-    arch::{asm, global_asm, naked_asm},
+    arch::{asm, global_asm},
     hint::spin_loop,
-    ptr::{addr_of, copy_nonoverlapping, read_volatile},
+    ptr::copy_nonoverlapping,
 };
 
 use alloc::vec;
@@ -18,10 +18,9 @@ use crate::{
         apic::APIC,
         madt::{MADT, record::MADTRecord},
     },
-    interrupts::interupt_gaurd::{self, BlockInterupts, InteruptGaurd},
-    memory::get_l4_table_phys_ptr,
-    println, serial_print,
-    tables::{gdt::SystemSegmentDiscriptor, idt::InteruptDiscriptorTable},
+    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
+    println,
+    tables::gdt::SystemSegmentDiscriptor,
     tools::cpu_id,
 };
 
@@ -195,7 +194,7 @@ pub fn write_trampoline(
 ) {
     // page lower end
     let page_range = {
-        let trampoline_start = VirtAddr::new(TRAMPOLINE_ADDRESS as u64);
+        let trampoline_start = VirtAddr::new(u64::from(TRAMPOLINE_ADDRESS));
         let trampoline_end = trampoline_start + 0x0000_0FFF;
         let trampoline_start_page = Page::containing_address(trampoline_start);
         let trampoline_end_page = Page::containing_address(trampoline_end);
@@ -286,7 +285,7 @@ pub fn init_proscessors(
             && apic.can_be_used()
         {
             other_apics.push(apic);
-            let offset = kernel_stack_size * apic.id as u64;
+            let offset = kernel_stack_size * u64::from(apic.id);
             let start = kernel_stack_bottom + offset;
             println!("start : {:#x}, size {:#x}", start, offset);
 

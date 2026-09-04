@@ -6,7 +6,6 @@
 
 extern crate alloc;
 
-use core::ops::Add;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
@@ -15,15 +14,13 @@ use cute_kernel::{
         apic::{APICClockDivider, LOCAL_APIC},
         ioapic::IOAPIC,
         load_sd_table,
-        madt::record::LocalAPIC,
     },
     display::init_writer,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{self},
-    multi_processors::{ap_mode_startup, init_proscessors, write_trampoline},
-    multi_tasking::{self, cooprative::Task, executor::Executor, scheduler},
+    multi_processors::{init_proscessors, write_trampoline},
+    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
     println,
-    sync::Mutex,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
 };

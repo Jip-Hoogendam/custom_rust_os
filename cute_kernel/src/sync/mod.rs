@@ -2,7 +2,7 @@ use core::{
     cell::UnsafeCell,
     error::Error,
     fmt::Display,
-    ops::{Add, Deref, DerefMut},
+    ops::{Deref, DerefMut},
 };
 
 /// The condition variable must always be a pointer to the exact heap allocated data.
