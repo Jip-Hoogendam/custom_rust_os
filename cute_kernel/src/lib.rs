@@ -19,6 +19,7 @@ pub mod display;
 pub mod interrupts;
 pub mod memory;
 pub mod msr;
+pub mod multi_processors;
 pub mod multi_tasking;
 pub mod serial;
 pub mod sync;
@@ -31,6 +32,7 @@ use core::{fmt::Display, panic::PanicInfo};
 
 /// This enum is used to denote diffrent operating systems privalage levels.
 /// Diffrent rings have diffrent acess to systems.
+#[derive(Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum PrivalageLevel {
     /// The kernel lives in this level

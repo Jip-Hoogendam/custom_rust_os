@@ -274,6 +274,41 @@ impl APIC {
         self.registers_mut().write(APICRegister::EOI, 0);
     }
 
+    fn ipi_msg(&self, target: u32, command: u32) {
+        let registers = self.registers_mut();
+        // higher bits first as it sends the command when the lower bits are written to.
+        registers.write(APICRegister::InteruptCommand1, target << 24);
+        registers.write(APICRegister::InteruptCommand0, command);
+    }
+
+    // Ipi code based off https://wiki.osdev.org/Symmetric_Multiprocessing#BSP_Initialization_Code
+    pub fn init_ipi(&self, target: u32) {
+        const SMI_COMMAND: u32 = 0x00_C500;
+        let current = self.registers_mut().read(APICRegister::InteruptCommand0) & 0xFFF0_0000;
+        self.ipi_msg(target, current | SMI_COMMAND);
+    }
+
+    pub fn deassert(&self, target: u32) {
+        const DEASSERT_COMMAND: u32 = 0x00_8500;
+        let current = self.registers_mut().read(APICRegister::InteruptCommand0) & 0xFFF0_0000;
+        self.ipi_msg(target, current | DEASSERT_COMMAND);
+    }
+
+    pub fn await_delivery(&self) {
+        const DELIVERY_BIT: u32 = 1 << 12;
+        while self.registers_mut().read(APICRegister::InteruptCommand0) & DELIVERY_BIT != 0 {}
+    }
+
+    pub fn clear_errors(&self) {
+        self.registers_mut().write(APICRegister::ErrorStatus, 0);
+    }
+
+    pub fn send_startup_ipi(&self, target: u32, address: u32) {
+        const SIPI_COMMAND: u32 = 0x00_0600;
+        let current = self.registers_mut().read(APICRegister::InteruptCommand0) & 0xFFF0_F800;
+        self.ipi_msg(target, current | SIPI_COMMAND | (address >> 12));
+    }
+
     /// intilizes the APIC
     /// This also disables the 8259 PIC properly just in case it was not disabled.
     ///

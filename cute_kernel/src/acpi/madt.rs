@@ -101,6 +101,15 @@ pub mod record {
         pub flags: u32,
     }
 
+    impl LocalAPIC {
+        pub fn can_be_used(&self) -> bool {
+            const APIC_CAN_IS_ENABLED: u32 = 0b0000_0001;
+            const APIC_CAN_BE_ENABLED: u32 = 0b0000_0010;
+
+            self.flags & APIC_CAN_BE_ENABLED != 0 || self.flags & APIC_CAN_IS_ENABLED != 0
+        }
+    }
+
     /// A record refrenceing a I/O APIC in on the processor
     /// This is required to setup Symmetric `MultiProssessing`.
     #[derive(Debug)]

@@ -9,6 +9,7 @@ extern crate alloc;
 use bootloader_api::config::Mapping;
 use bootloader_api::{BootInfo, BootloaderConfig, entry_point};
 use core::panic::PanicInfo;
+use cute_kernel::interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd};
 use cute_kernel::{println, serial_println};
 
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
@@ -25,7 +26,10 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     use cute_kernel::memory::{self, BootFrameAllocator};
     use x86_64::VirtAddr;
 
-    cute_kernel::init();
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        cute_kernel::init(g);
+    });
+
     let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_regions) };

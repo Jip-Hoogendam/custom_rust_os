@@ -3,7 +3,7 @@
 // These should only contain variables that a res at compile time
 
 ///The amount of segment discriptors the GDT will hold
-pub const GDT_TABLE_SIZE: usize = 7; //Discriptors
+pub const GDT_TABLE_SIZE: usize = 32; //Discriptors
 
 ///The allocated size of the interupt stacks
 pub type InteruptStack = [u8; 4096 * 64];

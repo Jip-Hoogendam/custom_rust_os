@@ -2,7 +2,7 @@ use core::{
     cell::UnsafeCell,
     error::Error,
     fmt::Display,
-    ops::{Deref, DerefMut},
+    ops::{Add, Deref, DerefMut},
 };
 
 /// The condition variable must always be a pointer to the exact heap allocated data.
@@ -35,7 +35,8 @@ impl<T: Sized> Mutex<T> {
 }
 
 impl<T: ?Sized> Mutex<T> {
-    pub const fn lock(&self) -> MutexGuard<'_, T> {
+    pub fn lock(&self) -> MutexGuard<'_, T> {
+        self.inner.lock();
         MutexGuard::new(self)
     }
 
@@ -109,3 +110,28 @@ impl Display for TryLockResult {
 }
 
 impl Error for TryLockResult {}
+
+#[cfg(test)]
+use crate::{multi_tasking, println};
+
+#[test_case]
+fn mutex_test() {
+    static TEST_MUTEX: Mutex<i32> = Mutex::new(0);
+
+    for i in 0..20 {
+        multi_tasking::premtive::spawn(move || {
+            for _ in (i * 1000)..((i + 1) * 1000) {
+                let mut value = TEST_MUTEX.lock();
+                *value = value.add(1);
+            }
+        });
+    }
+
+    loop {
+        let gaurd = TEST_MUTEX.lock();
+        if *gaurd == 20000 {
+            println!("Mutex works !");
+            break;
+        }
+    }
+}

@@ -281,6 +281,13 @@ pub enum InteruptDiscriptorIndex {
     TaskWait = 0x52,
 }
 
+#[derive(Debug)]
+#[repr(C, packed(2))]
+pub struct Idtr {
+    length: u16,
+    pointer: u64,
+}
+
 /// The structure that houses the interupt discriptor table.
 #[derive(Debug)]
 #[repr(C, packed)]
@@ -317,21 +324,20 @@ impl InteruptDiscriptorTable {
         self.discriptors[index as usize] = discriptor;
     }
 
+    #[must_use]
+    pub fn get_get_idtr(&self) -> Idtr {
+        #[allow(clippy::cast_possible_truncation)]
+        let length = size_of::<Self>() as u16 - 1;
+        let pointer = core::ptr::from_ref::<Self>(self) as u64;
+        Idtr { length, pointer }
+    }
+
     /// Loads the idt into the idtr
     pub fn load<T>(&self, _interupt_gaurd: &InteruptGaurd<T>)
     where
         T: InteruptController,
     {
-        #[derive(Debug)]
-        #[repr(C, packed(2))]
-        struct Idtr {
-            length: u16,
-            pointer: u64,
-        }
-        #[allow(clippy::cast_possible_truncation)]
-        let length = size_of::<Self>() as u16 - 1;
-        let pointer = core::ptr::from_ref::<Self>(self) as u64;
-        let idtr = &Idtr { length, pointer };
+        let idtr = &self.get_get_idtr();
         unsafe {
             asm!("lidt [{idtr}]", idtr =  in(reg) idtr, options(readonly, nostack, preserves_flags));
         }

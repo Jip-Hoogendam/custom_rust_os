@@ -12,8 +12,7 @@ use crate::{
     interrupts::{
         call_kill, call_switch_task,
         interupt_gaurd::{
-            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
-            InteruptGaurd,
+            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController, InteruptGaurd,
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
@@ -67,20 +66,22 @@ impl Scheduler {
     #[inline]
     fn get_current_task<T: InteruptController>(
         &self,
-        cpu_index: usize,
+        cpu_index: u16,
         interupt_gaurd: &InteruptGaurd<T>,
     ) -> Option<TaskId> {
-        unsafe { self.current_tasks.get(interupt_gaurd).assume_init_ref()[cpu_index] }
+        unsafe { self.current_tasks.get(interupt_gaurd).assume_init_ref()[cpu_index as usize] }
     }
 
     #[inline]
     fn set_current_task<T: InteruptController>(
         &self,
-        cpu_index: usize,
+        cpu_index: u16,
         task: Option<TaskId>,
         interupt_gaurd: &InteruptGaurd<T>,
     ) {
-        unsafe { self.current_tasks.get(interupt_gaurd).assume_init_mut()[cpu_index] = task }
+        unsafe {
+            self.current_tasks.get(interupt_gaurd).assume_init_mut()[cpu_index as usize] = task
+        }
     }
 
     #[inline]
@@ -114,7 +115,7 @@ impl Scheduler {
 
     pub fn schedule<T>(
         &self,
-        cpu_index: usize,
+        cpu_index: u16,
         thread: Thread,
         interupt_gaurd: &InteruptGaurd<T>,
     ) -> TaskId
@@ -136,7 +137,7 @@ impl Scheduler {
         id
     }
 
-    pub fn await_resource<T>(&self, cpu_index: usize, resource: &T) {
+    pub fn await_resource<T>(&self, cpu_index: u16, resource: &T) {
         {
             let interupt_gaurd = InteruptGaurd::<BlockInterupts>::block();
             let resource = NonZeroUsize::try_from(&raw const *resource as usize)
@@ -169,7 +170,7 @@ impl Scheduler {
         }
     }
 
-    pub fn kill_current_task(&self, cpu_index: usize) -> ! {
+    pub fn kill_current_task(&self, cpu_index: u16) -> ! {
         {
             let interupt_gaurd = InteruptGaurd::<BlockInterupts>::block();
             if let Some(task) = self.get_current_task(cpu_index, &interupt_gaurd) {
@@ -203,7 +204,7 @@ impl Scheduler {
     //Gives the next task that needs to be scheduled
     pub fn next<T>(
         &self,
-        cpu_index: usize,
+        cpu_index: u16,
         curr_stack: *mut u8,
         interupt_gaurd: &InteruptGaurd<T>,
     ) -> Option<NonZeroU64>

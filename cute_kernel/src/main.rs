@@ -15,10 +15,12 @@ use cute_kernel::{
         apic::{APICClockDivider, LOCAL_APIC},
         ioapic::IOAPIC,
         load_sd_table,
+        madt::record::LocalAPIC,
     },
     display::init_writer,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{self},
+    multi_processors::{ap_mode_startup, init_proscessors, write_trampoline},
     multi_tasking::{self, cooprative::Task, executor::Executor, scheduler},
     println,
     sync::Mutex,
@@ -46,6 +48,8 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     println!("Hello World!");
     if let Optional::Some(memory_offset) = boot_info.physical_memory_offset {
         println!("Virtual memory start {:#x}", memory_offset);
+        println!("Virtual memory start {:#x}", boot_info.kernel_image_offset);
+        println!("Virtual memory start {:#x}", boot_info.kernel_stack_len);
     }
 
     let phys_mem_offset = VirtAddr::new(
@@ -112,29 +116,20 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             cute_kernel::acpi::apic::APICTimerMode::OneShot,
             g,
         );
+
+        write_trampoline(&mut mapper, &mut frame_allocator);
+        init_proscessors(
+            mdat,
+            &LOCAL_APIC,
+            boot_info.kernel_stack_bottom,
+            boot_info.kernel_stack_len,
+            &mut mapper,
+            &mut frame_allocator,
+        );
     });
 
     #[cfg(test)]
     test_main();
-
-    static TEST_MUTEX: Mutex<i32> = Mutex::new(0);
-
-    for i in 0..20 {
-        multi_tasking::premtive::spawn(move || {
-            for _ in (i * 10)..((i + 1) * 10) {
-                let mut value = TEST_MUTEX.lock();
-                *value = value.add(1);
-            }
-        });
-    }
-
-    loop {
-        let gaurd = TEST_MUTEX.lock();
-        if *gaurd == 200 {
-            println!("Mutex works *");
-            break;
-        } 
-    }
 
     println!("Creating Async executor");
     let mut executor = Executor::default();

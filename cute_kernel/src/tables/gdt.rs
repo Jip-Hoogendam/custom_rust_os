@@ -1,10 +1,10 @@
 /// A module to interact with the GDT <https://wiki.osdev.org/Global_Descriptor_Table>.
-use crate::{PrivalageLevel, tables::tss::TaskStateSegment};
+use crate::{PrivalageLevel, println, tables::tss::TaskStateSegment};
 use core::{arch::asm, fmt::Display, mem::transmute};
 
 /// Used by the Global Descriptor table to determin the permissions of the diffrent segments. These
 /// hold induvidual discriptors of each segments and denote the permissions of these files.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct SegmentDiscriptor {
     /// All limit fields add up to a 20 bit value that indicates the length of the segment. But in
@@ -40,7 +40,7 @@ pub struct SegmentDiscriptor {
 }
 
 /// This is for the system segment discriptors.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C, packed)]
 pub struct SystemSegmentDiscriptor {
     // reuse the segment discriptor
@@ -158,15 +158,27 @@ impl SegmentDiscriptor {
         self
     }
 
+    const S_MASK: u8 = 0b0001_0000;
     /// Sets or unsets the executable bit
     /// When unset this segment is a data or code segment.
     /// When set this segment is a system segment.
     #[inline]
     pub const fn set_system_segment(&mut self, value: bool) -> &mut Self {
         const S_INDEX: u8 = 4;
-        const S_MASK: u8 = 0b0001_0000;
-        self.access_byte = (self.access_byte & !S_MASK) | (!value as u8) << S_INDEX;
+        self.access_byte = (self.access_byte & !Self::S_MASK) | (!value as u8) << S_INDEX;
         self
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_system_segment(&self) -> bool {
+        !(self.access_byte & Self::S_MASK != 0)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_tss(&self) -> bool {
+        self.access_byte & 0x09 != 0 && self.is_system_segment()
     }
 
     /// Sets or unsets the executable bit
@@ -184,26 +196,38 @@ impl SegmentDiscriptor {
         self
     }
 
+    const E_MASK: u8 = 0b0000_1000;
     /// Sets or unsets the executable bit
     /// When unset this segment is a data segment.
     /// When set this segment s a code segment.
     #[inline]
     pub const fn set_executable(&mut self, value: bool) -> &mut Self {
         const E_INDEX: u8 = 3;
-        const E_MASK: u8 = 0b0000_1000;
-        self.access_byte = (self.access_byte & !E_MASK) | (value as u8) << E_INDEX;
+        self.access_byte = (self.access_byte & !Self::E_MASK) | (value as u8) << E_INDEX;
         self
     }
 
+    #[inline]
+    #[must_use]
+    pub const fn is_code(&self) -> bool {
+        self.access_byte & Self::E_MASK != 0 && !self.is_system_segment()
+    }
+
+    const P_MASK: u8 = 0b1000_0000;
     /// Sets or unsets the present bit
     /// When unset this segment can not be used.
     /// When set this segment can be used.
     #[inline]
     pub const fn set_present(&mut self, value: bool) -> &mut Self {
         const P_INDEX: u8 = 7;
-        const P_MASK: u8 = 0b1000_0000;
-        self.access_byte = (self.access_byte & !P_MASK) | (value as u8) << P_INDEX;
+        self.access_byte = (self.access_byte & !Self::P_MASK) | (value as u8) << P_INDEX;
         self
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn present(&self) -> bool {
+        self.access_byte & Self::P_MASK != 0 && !self.is_system_segment()
     }
 
     /// Sets or unsets the longmode  bit
@@ -322,6 +346,48 @@ impl<const SIZE: usize> GlobalDescriptorTableBuilder<SIZE> {
         Some(selector)
     }
 
+    pub fn find_tss(&mut self) -> Option<SegmentSelector> {
+        for index in 0..SIZE {
+            let access_level = self.gdt.0[index].get_privilage_level();
+            if self.gdt.0[index].is_tss() && self.gdt.0[index].is_system_segment() {
+                return Some(SegmentSelector(
+                    u16::try_from(index).ok()? << 3 | access_level as u16,
+                ));
+            }
+        }
+        None
+    }
+
+    pub fn find_data_segment(&self, level: PrivalageLevel) -> Option<SegmentSelector> {
+        for index in 0..SIZE {
+            let access_level = self.gdt.0[index].get_privilage_level();
+            if access_level == level
+                && !self.gdt.0[index].is_code()
+                && !self.gdt.0[index].is_system_segment()
+            {
+                return Some(SegmentSelector(
+                    u16::try_from(index).ok()? << 3 | access_level as u16,
+                ));
+            }
+        }
+        None
+    }
+
+    pub fn find_code_segment(&self, level: PrivalageLevel) -> Option<SegmentSelector> {
+        for index in 0..SIZE {
+            let access_level = self.gdt.0[index].get_privilage_level();
+            if access_level == level
+                && self.gdt.0[index].is_code()
+                && !self.gdt.0[index].is_system_segment()
+            {
+                return Some(SegmentSelector(
+                    u16::try_from(index).ok()? << 3 | access_level as u16,
+                ));
+            }
+        }
+        None
+    }
+
     /// Loads the new GDT into the GDTR
     pub fn load(&self) {
         // A structure to load data into the GDTR register
@@ -417,7 +483,13 @@ impl SegmentSelector {
     #[inline]
     pub fn set_as_ds_register(self) {
         unsafe {
-            asm!("mov ds, {ds:r}", ds = in(reg) self.0, options(nostack, preserves_flags));
+            asm!(r#"
+            mov ds, {ds:r}
+            mov ss, {ds:r}
+            mov es, {ds:r}
+            mov fs, {ds:r}
+            mov gs, {ds:r}
+            "#, ds = in(reg) self.0, options(nostack, preserves_flags));
         }
     }
 
