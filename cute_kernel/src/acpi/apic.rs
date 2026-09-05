@@ -19,6 +19,7 @@ use x86_64::instructions::port::Port;
 
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
+    memory::addresses::VirtAddr,
     msr::{MSRValues, read_cpu_msr, write_cpu_msr},
     tables::idt::InteruptDiscriptorIndex,
 };
@@ -163,7 +164,6 @@ const PIC1_DATA: u16 = 0x21;
 const PIC2_DATA: u16 = 0xA1;
 
 const PIC_OFF: u16 = 0xFF;
-const APIC_CPUID_OFFSET: u32 = 1 << 9;
 
 const IA32_APIC_BASE_MSR: u32 = 0x1B;
 const IA32_APIC_BASE_MSR_ENABLE: u32 = 0x800;
@@ -315,7 +315,7 @@ impl APIC {
     /// # Safety
     /// This function assumes that the APIC is pointing to a correct APIC registers. And this
     /// requires the cpu to suport the Model specific register instructions.
-    pub unsafe fn init<T>(&self, addr: *mut u32, _interupt_gaurd: &InteruptGaurd<T>)
+    pub unsafe fn init<T>(&self, addr: VirtAddr, _interupt_gaurd: &InteruptGaurd<T>)
     where
         T: InteruptController,
     {
@@ -339,7 +339,7 @@ impl APIC {
         }
 
         // sets the apic to the correct registers based off the pointer
-        self.set_registers(unsafe { &mut *addr.cast() });
+        self.set_registers(unsafe { addr.to_mut_ref() });
 
         // Enable apic by setting the SpuriousInteruptVector.
         self.registers_mut().write(

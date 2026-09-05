@@ -10,6 +10,7 @@ use bootloader_api::config::Mapping;
 use bootloader_api::{BootInfo, BootloaderConfig, entry_point};
 use core::panic::PanicInfo;
 use cute_kernel::interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd};
+use cute_kernel::memory::addresses::PhysMemOffset;
 use cute_kernel::{println, serial_println};
 
 pub static BOOTLOADER_CONFIG: BootloaderConfig = {
@@ -24,13 +25,12 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     use cute_kernel::allocator;
     use cute_kernel::memory::{self, BootFrameAllocator};
-    use x86_64::VirtAddr;
 
     InteruptGaurd::<BlockInterupts>::scope(|g| {
         cute_kernel::init(g);
     });
 
-    let phys_mem_offset = VirtAddr::new(boot_info.physical_memory_offset.into_option().unwrap());
+    let phys_mem_offset = PhysMemOffset::get(boot_info);
     let mut mapper = unsafe { memory::init(phys_mem_offset) };
     let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_regions) };
     allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");

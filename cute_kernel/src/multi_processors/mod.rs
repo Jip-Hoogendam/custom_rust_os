@@ -188,6 +188,8 @@ const AP_STARTUP: u64 = 0x8a30;
 const PAGE_ADDRESS: u64 = 0x8a40;
 const IDT: u64 = 0x8a50;
 
+/// # Panics
+/// This function can panic if the page allocator fails to allocate certain frames
 pub fn write_trampoline(
     mapper: &mut impl Mapper<Size4KiB>,
     frame_allocator: &mut impl FrameAllocator<Size4KiB>,
@@ -221,6 +223,8 @@ pub fn write_trampoline(
     }
 }
 
+/// # Errors
+/// Will retrun a `FrameAllocationFailed` if the allocator fails to allocate the frames
 pub fn page_stack(
     start: usize,
     size: usize,
@@ -230,7 +234,6 @@ pub fn page_stack(
     let page_range = {
         let stack_start = VirtAddr::new(start as u64);
         let stack_end = stack_start + size as u64 - 1u64;
-        println!("End! {:#0x} ", stack_end.as_u64());
         let stack_start_page = Page::containing_address(stack_start);
         let stack_end_page = Page::containing_address(stack_end);
         Page::range_inclusive(stack_start_page, stack_end_page)
@@ -249,6 +252,8 @@ pub fn page_stack(
     Ok(())
 }
 
+/// # Panics
+/// This function may panic if the frame allocation fails
 pub fn init_proscessors(
     mdat: &MADT,
     local_apic: &APIC,
@@ -272,14 +277,15 @@ pub fn init_proscessors(
         );
         let cr3: u64;
         asm!("mov {cr3:r}, cr3", cr3 = out(reg) cr3);
-        let pointer = cr3;
-        core::ptr::write_volatile((PAGE_ADDRESS) as *mut u32, pointer as u32);
+        #[allow(clippy::cast_possible_truncation)]
+        core::ptr::write_volatile((PAGE_ADDRESS) as *mut u32, cr3 as u32);
         core::ptr::write_volatile((IDT) as *mut u64, &raw const idtr as u64);
     }
 
     let local_apic_id = local_apic.getid();
     let mut other_apics = vec![];
     for record in mdat.records() {
+        #[allow(clippy::cast_possible_truncation)]
         if let MADTRecord::LocalAPIC(apic) = record
             && apic.id != local_apic_id as u8
             && apic.can_be_used()

@@ -1,13 +1,15 @@
-use x86_64::VirtAddr;
-
 pub mod apic;
 pub mod ioapic;
 pub mod madt;
 pub mod sdt;
+use bootloader_api::BootInfo;
 use madt::MADT;
 use sdt::{SDP, SDT, SDTHeader};
 
-use crate::acpi::sdt::ShortSDTHeader;
+use crate::{
+    acpi::sdt::ShortSDTHeader,
+    memory::addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
+};
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -47,7 +49,7 @@ impl<'a> SDTables {
     ///
     /// # Errors
     /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
-    pub fn load(adress: u64) -> Result<&'a Self, SDTLoadErrors> {
+    pub fn load(adress: VirtAddr) -> Result<&'a Self, SDTLoadErrors> {
         Ok(unsafe { SDTHeader::load(adress)?.cast::<Self>() })
     }
 }
@@ -56,6 +58,7 @@ impl<'a> SDTables {
 #[derive(Debug)]
 pub enum SDTLoadErrors {
     InvalidChecksum,
+    NoRSDP,
 }
 
 /// Loads the acpi tables.
@@ -66,9 +69,15 @@ pub enum SDTLoadErrors {
 /// # Errors
 /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
 pub unsafe fn load_sd_table<'a>(
-    rsdp_ptr: u64,
-    phys_mem_offset: VirtAddr,
+    boot_info: &BootInfo,
+    phys_mem_offset: PhysMemOffset,
 ) -> Result<SDT<'a>, SDTLoadErrors> {
-    let sdp = unsafe { SDP::load_sdp(rsdp_ptr, phys_mem_offset)? };
-    SDT::load(&sdp, phys_mem_offset)
+    if let bootloader_api::info::Optional::Some(rsdp_ptr) = boot_info.rsdp_addr {
+        #[allow(clippy::cast_possible_truncation)]
+        let rsdp_ptr = PhysAddr::new(rsdp_ptr as usize);
+        let sdp = unsafe { SDP::load_sdp(rsdp_ptr, phys_mem_offset)? };
+        SDT::load(&sdp, phys_mem_offset)
+    } else {
+        Err(SDTLoadErrors::NoRSDP)
+    }
 }

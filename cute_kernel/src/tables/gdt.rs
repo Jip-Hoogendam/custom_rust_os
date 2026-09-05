@@ -50,7 +50,6 @@ pub struct SystemSegmentDiscriptor {
 }
 
 impl SystemSegmentDiscriptor {
-    const LDT_TYPE: u8 = 0x2;
     const TSS_TYPE: u8 = 0x9;
 
     /// Creates a new tss segment.
@@ -172,7 +171,7 @@ impl SegmentDiscriptor {
     #[inline]
     #[must_use]
     pub const fn is_system_segment(&self) -> bool {
-        (self.access_byte & Self::S_MASK == 0)
+        self.access_byte & Self::S_MASK == 0
     }
 
     #[inline]

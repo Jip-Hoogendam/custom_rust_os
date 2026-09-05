@@ -3,7 +3,10 @@ use core::{
     ptr::{read_volatile, write_volatile},
 };
 
-use crate::{acpi::apic::ApicId, println, sync::Mutex, tables::idt::InteruptDiscriptorIndex};
+use crate::{
+    acpi::apic::ApicId, memory::addresses::VirtAddr, println, sync::Mutex,
+    tables::idt::InteruptDiscriptorIndex,
+};
 
 #[derive(Clone, Copy, Debug)]
 #[repr(u8)]
@@ -38,11 +41,11 @@ impl IoApic {
     /// # Safety
     /// The caller mst garuntee that the passed address is to a actual `IoApicRegisters`
     #[inline]
-    pub const unsafe fn init(&mut self, address: *mut u32, base: u32) {
+    pub const unsafe fn init(&mut self, addr: VirtAddr, base: u32) {
         self.global_system_interupt_base = base;
         unsafe {
-            self.io_reg_sel.write(&mut *address);
-            self.io_win.write(&mut *address.add(4));
+            self.io_reg_sel.write(addr.to_mut_ref());
+            self.io_win.write(&mut *(addr.to_mut_ptr::<u32>()).add(4));
         }
     }
 
@@ -95,6 +98,7 @@ impl IoApic {
 
         let data = vector as u64 | u64::from(desitnation) << DESTINATION_OFFSET;
         let register = (irq as u32 - self.global_system_interupt_base) * 2 + IOREDBL_OFFSET;
+        #[allow(clippy::cast_possible_truncation)]
         self.write_register(register, data as u32);
         self.write_register(register + 1, (data >> 32) as u32);
     }

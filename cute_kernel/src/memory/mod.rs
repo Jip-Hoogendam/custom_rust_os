@@ -1,8 +1,12 @@
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
-use x86_64::{
-    PhysAddr, VirtAddr,
-    structures::paging::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB},
-};
+use x86_64::structures::paging::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB};
+
+pub mod addresses;
+pub mod frames;
+
+use addresses::PhysMemOffset;
+
+use crate::arch::x86::registers::Register;
 
 //Frame allocator that gives usable frames from the bootloader memory_map
 pub struct BootFrameAllocator {
@@ -32,7 +36,7 @@ impl BootFrameAllocator {
             .filter(|region| region.kind == MemoryRegionKind::Usable)
             .map(|region| region.start..region.end)
             .flat_map(|region| region.step_by(4096))
-            .map(|addr| PhysFrame::containing_address(PhysAddr::new(addr)))
+            .map(|addr| PhysFrame::containing_address(x86_64::PhysAddr::new(addr)))
     }
 }
 
@@ -50,7 +54,7 @@ unsafe impl FrameAllocator<Size4KiB> for BootFrameAllocator {
             }
         }
 
-        let frame = PhysFrame::containing_address(PhysAddr::new(self.next_addr));
+        let frame = PhysFrame::containing_address(x86_64::PhysAddr::new(self.next_addr));
         self.next_addr += 4096;
         if self.next_addr >= reigion.end {
             self.reigion_index += 1;
@@ -66,10 +70,10 @@ unsafe impl FrameAllocator<Size4KiB> for BootFrameAllocator {
 ///Caller must garuntee that the entire physical memory is mapped.
 ///Caller must garuntee this function is only called once.
 #[must_use]
-pub unsafe fn init(physical_memory_offset: VirtAddr) -> OffsetPageTable<'static> {
+pub unsafe fn init(physical_memory_offset: PhysMemOffset) -> OffsetPageTable<'static> {
     unsafe {
         let l4_table_frame = activate_l4_table(physical_memory_offset);
-        OffsetPageTable::new(l4_table_frame, physical_memory_offset)
+        OffsetPageTable::new(l4_table_frame, physical_memory_offset.to_x86_lib())
     }
 }
 
@@ -87,14 +91,13 @@ pub fn get_l4_table_phys_ptr() -> u64 {
 ///
 ///Caller must garuntee that the entire physical memory is mapped.
 ///Caller must garuntee that this function is only called once.
-unsafe fn activate_l4_table(physical_memory_offset: VirtAddr) -> &'static mut PageTable {
-    use x86_64::registers::control::Cr3;
+unsafe fn activate_l4_table(physical_memory_offset: PhysMemOffset) -> &'static mut PageTable {
+    use crate::arch::x86::registers::Cr3;
 
-    let (l4_table_frame, _) = Cr3::read();
+    let cr3 = Cr3::read();
 
-    let phys = l4_table_frame.start_address();
-    let virt = physical_memory_offset + phys.as_u64();
-    let page_table_ptr: *mut PageTable = virt.as_mut_ptr();
+    let virt = physical_memory_offset + cr3.l4_table_frame().get_base();
+    let page_table_ptr: *mut PageTable = virt.to_mut_ptr();
 
     unsafe { &mut *page_table_ptr }
 }

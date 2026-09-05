@@ -1,7 +1,6 @@
 use core::ptr::from_raw_parts;
 
-use x86_64::{PhysAddr, VirtAddr};
-
+use crate::memory::addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr};
 
 use super::{SDTLoadErrors, SDTables};
 
@@ -24,7 +23,7 @@ pub struct RSDP {
     /// if this is heigher then 1 the use the XSDP instead.
     pub revision: u8,
     /// The adress of the RSDT.
-    pub rsdt_address: u32,
+    pub rsdt_address: PhysAddr,
 }
 
 /// The structure of the XSDP.
@@ -54,7 +53,7 @@ pub struct XSDP {
     /// The total length including in bytes of the XSDP.
     pub length: u32,
     /// The adress of the XSDT.
-    pub xsdt_address: u64,
+    pub xsdt_address: PhysAddr,
     /// The extended checksum.
     /// I guess this got included to allow backward compatibility with the RSDP.
     pub extended_checksum: u8,
@@ -85,15 +84,14 @@ impl SDP<'_> {
     /// # Errors
     /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
     pub unsafe fn load_sdp(
-        rsdp_addr: u64,
-        phys_mem_offset: VirtAddr,
+        rsdp_addr: PhysAddr,
+        phys_mem_offset: PhysMemOffset,
     ) -> Result<Self, SDTLoadErrors> {
-        let rsdp_phys = PhysAddr::new(rsdp_addr);
-        let rsdp_virt = phys_mem_offset + rsdp_phys.as_u64();
-        let rsdp = unsafe { &*rsdp_virt.as_ptr::<RSDP>() };
+        let rsdp_virt = phys_mem_offset + rsdp_addr;
+        let rsdp: &RSDP = unsafe { rsdp_virt.to_ref() };
         if rsdp.revision > 1 {
-            let xsdp = unsafe { &*rsdp_virt.as_ptr::<XSDP>() };
-            let raw_data = rsdp_virt.as_ptr::<u8>();
+            let xsdp: &XSDP = unsafe { rsdp_virt.to_ref() };
+            let raw_data = rsdp_virt.to_ptr::<u8>();
             let mut checksum = 0u8;
             #[allow(clippy::cast_possible_wrap)]
             for i in 0..xsdp.length {
@@ -107,7 +105,7 @@ impl SDP<'_> {
                 Ok(Self::XSDP(xsdp))
             }
         } else {
-            let checksum = unsafe { &*rsdp_virt.as_ptr::<[u8; 20]>() };
+            let checksum = unsafe { &*rsdp_virt.to_ptr::<[u8; 20]>() };
             let checksum = checksum.iter().fold(0u8, |c, x| c.overflowing_add(*x).0);
             if checksum != 0 {
                 Err(SDTLoadErrors::InvalidChecksum)
@@ -178,9 +176,9 @@ impl SDTHeader {
     ///
     /// # Errors
     /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
-    pub unsafe fn load<'a>(adress: u64) -> Result<&'a Self, SDTLoadErrors> {
-        let header = unsafe { &*(adress as *const u8).cast::<Self>() };
-        let raw_data = (adress as *const u8).cast::<u8>();
+    pub unsafe fn load<'a>(adress: VirtAddr) -> Result<&'a Self, SDTLoadErrors> {
+        let header = unsafe { adress.to_ref::<Self>() };
+        let raw_data = adress.to_ptr::<u8>();
         let mut checksum = 0u8;
         #[allow(clippy::cast_possible_wrap)]
         for i in 0..header.length {
@@ -208,7 +206,7 @@ impl SDTHeader {
 
 /// A handly iterator to loop over the SDT records.
 pub struct SDTIter<'a> {
-    offset: u64,
+    offset: PhysMemOffset,
     sdt: SDT<'a>,
     index: usize,
     table: &'a [u8],
@@ -224,16 +222,21 @@ impl<'a> Iterator for SDTIter<'a> {
         }
         match self.sdt.typ {
             SDTType::XSDT => {
-                let ptr =
-                    u64::from_le_bytes(self.table[self.index..self.index + 8].try_into().ok()?);
+                let ptr = PhysAddr::new(
+                    usize::try_from(u64::from_le_bytes(
+                        self.table[self.index..self.index + 8].try_into().ok()?,
+                    ))
+                    .ok()?,
+                );
                 let item = SDTables::load(ptr + self.offset).ok()?;
                 self.index += size_of::<u64>();
                 Some(item)
             }
             SDTType::RSDT => {
-                let ptr =
-                    u32::from_le_bytes(self.table[self.index..self.index + 8].try_into().ok()?);
-                let item = SDTables::load(u64::from(ptr) + self.offset).ok()?;
+                let ptr = PhysAddr::new(u32::from_le_bytes(
+                    self.table[self.index..self.index + 8].try_into().ok()?,
+                ) as usize);
+                let item = SDTables::load(ptr + self.offset).ok()?;
                 self.index += size_of::<u64>();
                 Some(item)
             }
@@ -259,7 +262,7 @@ pub struct SDT<'a> {
 
 impl<'a> SDT<'a> {
     #[must_use]
-    pub const fn tables_iter(self, offset: u64) -> SDTIter<'a> {
+    pub const fn tables_iter(self, offset: PhysMemOffset) -> SDTIter<'a> {
         let length = self.header.length as usize - size_of::<SDTHeader>();
         let pointer = core::ptr::from_ref::<SDTHeader>(self.header);
         let pointer = unsafe { pointer.add(1) }.cast::<u8>();
@@ -279,13 +282,13 @@ impl<'a> SDT<'a> {
     ///
     /// # Errors
     /// Returns a `SDTLoadErrors::InvalidChecksum` if the checksum is invalid
-    pub fn load(sdp: &SDP<'a>, phys_mem_offset: VirtAddr) -> Result<Self, SDTLoadErrors> {
+    pub fn load(sdp: &SDP<'a>, phys_mem_offset: PhysMemOffset) -> Result<Self, SDTLoadErrors> {
         let (typ, header) = match sdp {
             SDP::RSDP(rsdp) => (SDTType::RSDT, unsafe {
-                SDTHeader::load(phys_mem_offset.as_u64() + u64::from(rsdp.rsdt_address))?.cast()
+                SDTHeader::load(phys_mem_offset + rsdp.rsdt_address)?.cast()
             }),
             SDP::XSDP(xsdp) => (SDTType::XSDT, unsafe {
-                SDTHeader::load(phys_mem_offset.as_u64() + xsdp.xsdt_address)?.cast()
+                SDTHeader::load(phys_mem_offset + xsdp.xsdt_address)?.cast()
             }),
         };
 

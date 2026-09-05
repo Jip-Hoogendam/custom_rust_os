@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-
+use alloc::boxed;
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
     acpi::{
@@ -17,10 +17,11 @@ use cute_kernel::{
     },
     display::init_writer,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
-    memory::{self},
+    memory::{self, addresses::PhysMemOffset},
     multi_processors::{init_proscessors, write_trampoline},
-    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
-    println,
+    multi_tasking::{self, cooprative::Task, executor::Executor, premtive::spawn, scheduler},
+    println, serial_println,
+    sync::Mutex,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
 };
@@ -38,6 +39,9 @@ pub static BOOTLOADER_CONFIG: BootloaderConfig = {
 entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
+    let phys_mem_offset = PhysMemOffset::get(boot_info);
+    let sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
+
     if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
         init_writer(framebuffer);
     }
@@ -45,32 +49,11 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     println!("Hello World!");
     if let Optional::Some(memory_offset) = boot_info.physical_memory_offset {
         println!("Virtual memory start {:#x}", memory_offset);
-        println!("Virtual memory start {:#x}", boot_info.kernel_image_offset);
-        println!("Virtual memory start {:#x}", boot_info.kernel_stack_len);
     }
-
-    let phys_mem_offset = VirtAddr::new(
-        boot_info
-            .physical_memory_offset
-            .into_option()
-            .expect("No offset provided!"),
-    );
-
-    println!("Load SDT");
-    let sd_tables = unsafe {
-        load_sd_table(
-            boot_info
-                .rsdp_addr
-                .into_option()
-                .expect("Expected a rsdt pointer to be passed by bootloader"),
-            phys_mem_offset,
-        )
-    }
-    .unwrap();
 
     println!("Load MDAT");
     let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables
-        .tables_iter(phys_mem_offset.as_u64())
+        .tables_iter(phys_mem_offset)
         .find(|x| matches!(x, SDTables::MADT(_)))
     {
         mdat
@@ -98,9 +81,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         scheduler::SCHEDULER.init(4, g);
         println!("Scheduler initlized");
         println!("Setting apic timer");
-        mdat.init_apic(phys_mem_offset.as_u64(), &LOCAL_APIC, g);
+        mdat.init_apic(phys_mem_offset, &LOCAL_APIC, g);
         println!("Setting up io apic");
-        mdat.init_io_apic(phys_mem_offset.as_u64(), IOAPIC.lock());
+        mdat.init_io_apic(phys_mem_offset, IOAPIC.lock());
         IOAPIC.lock().set_irq_physical(
             cute_kernel::acpi::ioapic::IRQ::Keyboard,
             InteruptDiscriptorIndex::Keyboard,

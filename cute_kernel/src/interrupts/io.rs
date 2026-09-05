@@ -1,6 +1,6 @@
 use crate::{
     acpi::apic::LOCAL_APIC,
-    interrupts::interupt_gaurd::{self, InteruptAlreadyBlocked, InteruptGaurd},
+    interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
 };
 
 use super::InterruptStackFrame;

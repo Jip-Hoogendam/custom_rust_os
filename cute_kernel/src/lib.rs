@@ -15,6 +15,7 @@ extern crate alloc;
 
 pub mod acpi;
 pub mod allocator;
+pub mod arch;
 pub mod display;
 pub mod interrupts;
 pub mod memory;
@@ -32,7 +33,7 @@ use core::{fmt::Display, panic::PanicInfo};
 
 /// This enum is used to denote diffrent operating systems privalage levels.
 /// Diffrent rings have diffrent acess to systems.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[repr(u8)]
 pub enum PrivalageLevel {
     /// The kernel lives in this level
@@ -164,10 +165,20 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
-use bootloader_api::{BootInfo, entry_point};
-
 #[cfg(test)]
-use crate::{display::init_writer, interrupts::interupt_gaurd::BlockInterupts};
+use crate::{
+    acpi::{
+        SDTables,
+        apic::{APICClockDivider, LOCAL_APIC},
+        ioapic::IOAPIC,
+        load_sd_table,
+    },
+    display::init_writer,
+    interrupts::interupt_gaurd::BlockInterupts,
+    memory::addresses::PhysMemOffset,
+    multi_tasking::scheduler,
+    tables::idt::InteruptDiscriptorIndex,
+};
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     tables::{
@@ -175,6 +186,8 @@ use crate::{
         gdt::{SegmentDiscriptor, SystemSegmentDiscriptor},
     },
 };
+#[cfg(test)]
+use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point};
 
 /// This function is called on panic.
 #[cfg(not(feature = "qemu-test"))]
@@ -192,18 +205,64 @@ fn panic(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
-entry_point!(test_kernel_main);
+pub static BOOTLOADER_CONFIG: BootloaderConfig = {
+    let mut config = BootloaderConfig::new_default();
+    config.mappings.physical_memory = Some(Mapping::Dynamic);
+    config
+};
+
+#[cfg(test)]
+entry_point!(test_kernel_main, config = &BOOTLOADER_CONFIG);
 
 /// Entry point for `cargo test`
 #[cfg(test)]
 #[unsafe(no_mangle)]
 fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
+    let phys_mem_offset = PhysMemOffset::get(boot_info);
+
+    //load SDT tables
+    let sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
+
+    //Init frame buffer
     if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
         init_writer(framebuffer);
     }
     InteruptGaurd::<BlockInterupts>::scope(|g| {
         init(g);
     });
+
+    use allocator;
+    use memory::BootFrameAllocator;
+
+    //Init allocator
+    let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_regions) };
+    let mut mapper = unsafe { memory::init(phys_mem_offset) };
+    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap allocation failed");
+
+    //load MDAT tables
+    let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables
+        .tables_iter(phys_mem_offset)
+        .find(|x| matches!(x, SDTables::MADT(_)))
+    {
+        mdat
+    } else {
+        todo!("Load no multi prosessing or APICS");
+    };
+
+    //Setup scheduler
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        scheduler::SCHEDULER.init(4, g);
+        mdat.init_apic(phys_mem_offset, &LOCAL_APIC, g);
+        mdat.init_io_apic(phys_mem_offset, IOAPIC.lock());
+
+        LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
+        LOCAL_APIC.set_timer_interupt_vector(
+            InteruptDiscriptorIndex::TaskSwitch,
+            acpi::apic::APICTimerMode::OneShot,
+            g,
+        );
+    });
+
     test_main();
     halt_loop();
 }

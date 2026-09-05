@@ -119,10 +119,10 @@ fn mutex_test() {
     static TEST_MUTEX: Mutex<i32> = Mutex::new(0);
 
     for i in 0..20 {
-        multi_tasking::premtive::spawn(move || {
-            for _ in (i * 1000)..((i + 1) * 1000) {
+        multi_tasking::premtive::spawn(|| {
+            for _ in 0..1000 {
                 let mut value = TEST_MUTEX.lock();
-                *value = value.add(1);
+                *value += 1;
             }
         });
     }

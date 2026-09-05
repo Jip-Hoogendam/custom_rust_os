@@ -46,6 +46,7 @@ pub struct ThreadOptions {
     pub argument_5: usize,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Thread {
     stack: Stack,

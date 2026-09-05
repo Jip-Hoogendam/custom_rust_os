@@ -2,7 +2,7 @@
 use crate::{
     acpi::{ioapic::IoApic, sdt::ShortSDTHeader},
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
-    println,
+    memory::addresses::{PhysAddr, PhysMemOffset},
     sync::MutexGuard,
 };
 
@@ -21,40 +21,32 @@ impl MADT {
     /// Searches for the apic and initlizes it.
     pub fn init_apic<T: InteruptController>(
         &self,
-        offset: u64,
+        offset: PhysMemOffset,
         apic: &APIC,
         interupt_gaurd: &InteruptGaurd<T>,
     ) {
-        let mut pointer = u64::from(self.local_apic_addr);
+        let mut pointer = PhysAddr::from(self.local_apic_addr);
 
         // properly overide the record.
         for record in self.records() {
             if let record::MADTRecord::LocalAPICOveride(addr) = record {
-                pointer = addr.address;
+                pointer = PhysAddr::from(addr.address);
                 break;
             }
         }
 
-        unsafe { apic.init((pointer + offset) as *mut u32, interupt_gaurd) }
+        unsafe { apic.init(pointer + offset, interupt_gaurd) }
     }
 
     /// # Panics
     /// Panics if the `IoApic` can not be found
     /// FIXME: allow mutliple IOAPICS
-    pub fn init_io_apic(&self, offset: u64, mut io_apic: MutexGuard<'_, IoApic>) {
+    pub fn init_io_apic(&self, offset: PhysMemOffset, mut io_apic: MutexGuard<'_, IoApic>) {
         for record in self.records() {
             if let record::MADTRecord::IOAPIC(ioapic) = record {
-                let address = u64::from(ioapic.address) + offset;
-                println!(
-                    "add: {address:#x}, addr: {:#x}, read : {}",
-                    u64::from(ioapic.address),
-                    unsafe { &*(address as *mut usize) }
-                );
+                let addr = PhysAddr::from(ioapic.address) + offset;
                 unsafe {
-                    io_apic.init(
-                        (address as *mut u32).as_mut().unwrap_unchecked(),
-                        ioapic.global_interupt_system_base,
-                    );
+                    io_apic.init(addr, ioapic.global_interupt_system_base);
                 }
                 return;
             }
