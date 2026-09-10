@@ -2,17 +2,14 @@ use core::{error::Error, fmt::Display};
 
 use bootloader_api::info::MemoryRegions;
 
-use crate::{
-    memory::{
+use crate::memory::{
         addresses::{PhysMemOffset, VirtAddr},
         frames::{Frame4Kb, PhysFrame},
         pageing::{
             frame_allocator::FrameAllocator,
             page_table::{Page, PageEntryOption, PageTable, PageTableError},
         },
-    },
-    println,
-};
+    };
 
 pub mod frame_allocator;
 pub mod page_table;
@@ -39,7 +36,7 @@ pub struct RegionPromise {
 impl RegionPromise {
     #[inline]
     #[must_use]
-    pub fn offset(&self) -> PhysMemOffset {
+    pub const fn offset(&self) -> PhysMemOffset {
         self.offset
     }
 }

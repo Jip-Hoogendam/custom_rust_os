@@ -103,9 +103,9 @@ impl From<u64> for PhysAddr {
     }
 }
 
-impl Into<usize> for PhysAddr {
-    fn into(self) -> usize {
-        self.0
+impl From<PhysAddr> for usize {
+    fn from(val: PhysAddr) -> Self {
+        val.0
     }
 }
 
@@ -241,9 +241,9 @@ impl From<u64> for VirtAddr {
     }
 }
 
-impl Into<usize> for VirtAddr {
-    fn into(self) -> usize {
-        self.0
+impl From<VirtAddr> for usize {
+    fn from(val: VirtAddr) -> Self {
+        val.0
     }
 }
 

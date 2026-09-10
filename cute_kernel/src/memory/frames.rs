@@ -32,7 +32,7 @@ pub struct PhysFrame<S: FrameSize = Frame4Kb> {
 impl<S: FrameSize> AddAssign<usize> for PhysFrame<S> {
     #[inline]
     fn add_assign(&mut self, rhs: usize) {
-        self.address += rhs * Self::SIZE
+        self.address += rhs * Self::SIZE;
     }
 }
 
