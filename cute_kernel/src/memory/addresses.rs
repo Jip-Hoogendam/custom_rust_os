@@ -1,5 +1,5 @@
 use bootloader_api::{BootInfo, info::Optional};
-use core::ops::{Add, Sub};
+use core::ops::{Add, AddAssign, Sub};
 
 pub trait Address {
     #[must_use]
@@ -27,6 +27,19 @@ impl PhysMemOffset {
         }
     }
 
+    /// To convert from virt addr
+    #[inline]
+    #[must_use]
+    pub const fn from_virt(addr: VirtAddr) -> Self {
+        Self(addr)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn inner(&self) -> VirtAddr {
+        self.0
+    }
+
     //Converts this type to a x86_64 lib variant while i am transitioning away from this crate
     #[inline]
     #[must_use]
@@ -45,7 +58,7 @@ impl Add<PhysAddr> for PhysMemOffset {
 
 /// A simple struct to interact with physical addresses
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PhysAddr(usize);
 
 impl Address for PhysAddr {
@@ -101,6 +114,47 @@ impl Add<PhysMemOffset> for PhysAddr {
     #[inline]
     fn add(self, rhs: PhysMemOffset) -> Self::Output {
         rhs + self
+    }
+}
+
+impl AddAssign<usize> for PhysAddr {
+    #[inline]
+    fn add_assign(&mut self, rhs: usize) {
+        self.0 += rhs;
+    }
+}
+
+impl Add<usize> for PhysAddr {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: usize) -> Self::Output {
+        Self::new(self.to_usize() + rhs)
+    }
+}
+
+impl Sub<usize> for PhysAddr {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: usize) -> Self::Output {
+        Self::new(self.to_usize() - rhs)
+    }
+}
+
+impl Add<u64> for PhysAddr {
+    type Output = Self;
+    #[inline]
+    fn add(self, rhs: u64) -> Self::Output {
+        #[allow(clippy::cast_possible_truncation)]
+        Self::new(self.to_usize() + rhs as usize)
+    }
+}
+
+impl Sub<u64> for PhysAddr {
+    type Output = Self;
+    #[inline]
+    fn sub(self, rhs: u64) -> Self::Output {
+        #[allow(clippy::cast_possible_truncation)]
+        Self::new(self.to_usize() - rhs as usize)
     }
 }
 

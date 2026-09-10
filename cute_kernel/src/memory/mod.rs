@@ -3,6 +3,7 @@ use x86_64::structures::paging::{FrameAllocator, OffsetPageTable, PageTable, Phy
 
 pub mod addresses;
 pub mod frames;
+pub mod pageing;
 
 use addresses::PhysMemOffset;
 

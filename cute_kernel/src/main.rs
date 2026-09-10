@@ -16,8 +16,14 @@ use cute_kernel::{
         load_sd_table,
     },
     display::init_writer,
+    halt_loop,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
-    memory::{self, addresses::PhysMemOffset},
+    memory::{
+        self,
+        addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
+        frames::PhysFrame,
+        pageing::{MemoryMapper, frame_allocator::FrameAllocator, page_table::PageEntryOption},
+    },
     multi_processors::{init_proscessors, write_trampoline},
     multi_tasking::{self, cooprative::Task, executor::Executor, premtive::spawn, scheduler},
     println, serial_println,
@@ -25,7 +31,6 @@ use cute_kernel::{
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
 };
-use x86_64::VirtAddr;
 
 use bootloader_api::config::{BootloaderConfig, Mapping};
 
@@ -50,6 +55,22 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     if let Optional::Some(memory_offset) = boot_info.physical_memory_offset {
         println!("Virtual memory start {:#x}", memory_offset);
     }
+
+    let mut memory_mapper = MemoryMapper::init(&boot_info.memory_regions, phys_mem_offset)
+        .expect("Expect memory mapper to be made");
+
+    println!("Allocating exact");
+    let alloc = memory_mapper
+        .allocate_range(
+            VirtAddr::new(0xDEADDEAD000),
+            PageEntryOption::Present,
+            PhysFrame::new(PhysAddr::new(0xA000)),
+            PhysFrame::new(PhysAddr::new(0xA100)),
+        )
+        .unwrap();
+    memory_mapper.deallocate(alloc);
+
+    halt_loop();
 
     println!("Load MDAT");
     let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables
