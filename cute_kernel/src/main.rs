@@ -15,11 +15,10 @@ use cute_kernel::{
         load_sd_table,
     },
     display::init_writer,
-    halt_loop,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{
-        addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
-        pageing::{MemoryMapper, page_table::PageEntryOption},
+        addresses::{Address, PhysMemOffset},
+        pageing::MemoryMapper,
     },
     multi_processors::{init_proscessors, write_trampoline},
     multi_tasking::{cooprative::Task, executor::Executor, scheduler},

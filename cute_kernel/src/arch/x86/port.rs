@@ -6,6 +6,7 @@ pub struct Port<T: Copy> {
 }
 
 impl<T: Copy> Port<T> {
+    #[must_use]
     pub fn new(port: u16) -> Self {
         assert!(size_of::<T>() <= 4);
         Self {

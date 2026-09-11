@@ -8,7 +8,6 @@ use crate::{
         addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
         frames::{Frame4Kb, FrameSize, PhysFrame},
     },
-    println,
     variables::FRAME_ALLOCATOR_BEGIN_FRAME_OFFSET,
 };
 

@@ -4,16 +4,15 @@ use bootloader_api::info::MemoryRegions;
 
 use crate::{
     memory::{
-        addresses::{Address, PhysMemOffset, VirtAddr},
+        addresses::{PhysMemOffset, VirtAddr},
         frames::{Frame4Kb, PhysFrame},
         pageing::{
             frame_allocator::FrameAllocator,
             page_table::{
-                Page, PageEntryOption, PageEntryOptions, PageTable, PageTableEntry, PageTableError,
+                Page, PageEntryOption, PageEntryOptions, PageTable, PageTableError,
             },
         },
-    },
-    print, println,
+    }, println,
 };
 
 pub mod frame_allocator;

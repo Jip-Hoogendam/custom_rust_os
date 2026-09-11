@@ -4,7 +4,7 @@ use core::{
 };
 
 use crate::{
-    acpi::apic::ApicId, memory::addresses::VirtAddr, println, sync::Mutex,
+    acpi::apic::ApicId, memory::addresses::VirtAddr, sync::Mutex,
     tables::idt::InteruptDiscriptorIndex,
 };
 

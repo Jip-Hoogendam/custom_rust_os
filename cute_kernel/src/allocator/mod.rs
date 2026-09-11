@@ -4,7 +4,7 @@ use crate::{
         addresses::VirtAddr,
         pageing::{
             MemoryMapper, MemoryMapperError,
-            page_table::{PageEntryOption, PageEntryOptions},
+            page_table::PageEntryOption,
         },
     },
 };

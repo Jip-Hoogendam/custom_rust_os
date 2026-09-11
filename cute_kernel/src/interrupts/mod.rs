@@ -1,5 +1,5 @@
 use core::{
-    arch::{self, asm},
+    arch::asm,
     fmt::Display,
 };
 

@@ -27,6 +27,7 @@ impl PhysMemOffset {
         }
     }
 
+    #[must_use]
     pub const fn null() -> Self {
         Self(VirtAddr::null())
     }

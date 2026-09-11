@@ -10,7 +10,6 @@ use crate::{
         frames::PhysFrame,
         pageing::frame_allocator::FrameAllocator,
     },
-    println,
 };
 
 /// A struct to construnct from via multiple options

@@ -15,7 +15,7 @@ use crate::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{
         addresses::{Address, PhysAddr, VirtAddr},
-        frames::{Frame4Kb, PhysFrame},
+        frames::PhysFrame,
         pageing::{MemoryMapper, MemoryMapperError, page_table::PageEntryOption},
     },
     println,
