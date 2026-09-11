@@ -118,7 +118,6 @@ impl BinaryBuddy {
         if res_block.is_null() {
             None
         } else {
-            println!("Splitting");
             Some(Self::split_block(res_block, size))
         }
     }
@@ -126,23 +125,22 @@ impl BinaryBuddy {
     ///finds the next usable block.
     #[inline]
     fn next_block(block: *mut BuddyBlock) -> *mut BuddyBlock {
-        #[allow(clippy::cast_ptr_alignment)]
-        unsafe {
-            block.cast::<u8>().add((*block).size).cast::<BuddyBlock>()
-        }
+        println!("PTR : {:?}", block);
+        println!("CAST_PTR : {:?}", unsafe { block.cast::<u8>() });
+        unsafe { block.byte_add((*block).size) }
     }
 
     ///splits the block into the 2 smaller blocks
     fn split_block(block: *mut BuddyBlock, size: usize) -> *mut BuddyBlock {
-        println!("got here !");
         if !block.is_null() && size != 0 {
             unsafe {
-                println!("size = ", (*block).size / 2));
+                println!("size = {}", (*block).size);
                 while size < (*block).size / 2 {
-                    println!("split !");
                     let new_size = (*block).size / 2;
+                    println!("new_size = {}", new_size);
                     (*block).size = new_size;
                     let new_block = Self::next_block(block);
+                    println!("New Block: {:?}", new_block);
                     (*new_block).size = new_size;
                     (*new_block).free = true;
                 }
