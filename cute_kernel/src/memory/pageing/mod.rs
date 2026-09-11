@@ -8,11 +8,10 @@ use crate::{
         frames::{Frame4Kb, PhysFrame},
         pageing::{
             frame_allocator::FrameAllocator,
-            page_table::{
-                Page, PageEntryOption, PageEntryOptions, PageTable, PageTableError,
-            },
+            page_table::{Page, PageEntryOption, PageEntryOptions, PageTable, PageTableError},
         },
-    }, println,
+    },
+    println,
 };
 
 pub mod frame_allocator;
@@ -20,18 +19,18 @@ pub mod page_table;
 
 /// Describes the layout of the physical memory that needs to be allocated.
 /// - `PageMemoryMap::Range{begin: PhysFrame, end: PhysFrame}` describes a exact physical mapping that
-/// is requested. Only use this if you need a exact mapping to the physical memory.
+///   is requested. Only use this if you need a exact mapping to the physical memory.
 /// - `PageMemoryMap::Bytes(usize)` requests a page where the size is known however where in
-/// physical space it is is not needed. The size is in bytes
+///   physical space it is is not needed. The size is in bytes
 /// - `PageMemoryMap::Single` Request a single page to be created anywhere in memory. This one is
-/// mostly used internaly to reserve more internal info.
+///   mostly used internaly to reserve more internal info.
 pub enum PageMemoryMap {
     Range { begin: PhysFrame, end: PhysFrame },
     Bytes(usize),
     Single,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct RegionPromise {
     offset: PhysMemOffset,
     frames: usize,
@@ -94,7 +93,7 @@ impl MemoryMapper {
                 if !entry.present() {
                     return false;
                 }
-                self.frame_alloc.dealloc(&entry.frame());
+                self.frame_alloc.dealloc(entry.frame());
                 entry.free();
                 page.flush();
                 page += 1;
@@ -138,7 +137,7 @@ impl MemoryMapper {
                     break 'outer;
                 }
 
-                if !self.frame_alloc.allocate_exact(&frame) {
+                if !self.frame_alloc.allocate_exact(frame) {
                     break 'outer;
                 }
 

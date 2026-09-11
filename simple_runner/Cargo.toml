@@ -2,6 +2,13 @@
 name = "simple_runner"
 version = "0.1.0"
 edition = "2024"
+license-file = "../LICENSE"
+repository = "http://forgejo.servers/jhoogend/owos-prime"
+readme = "./README.md"
+keywords = ["OS", "Kernel", "Testing"]
+categories = ["OS", "Kernel", "Testing"]
+description = "The runner testing the kernel"
+
 
 [dependencies]
 ovmf-prebuilt = "0.2.4"

@@ -193,6 +193,9 @@ impl Scheduler {
     ///
     /// f = (-(N/(`TASK_COUNT_MAX` * P)) + 1)^`TASKS_SLOPE_FACTOR` * (`TASK_CYCLES_MAN` - `TASK_CYCLES_MIX`) + `TASK_CYCLES_MIN`
     /// FIXME: Create a scheduler that bases the time based off the taskinfo
+    #[allow(clippy::cast_sign_loss)]
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
     fn compute_task_time(task_count: usize, _task: &TaskInfo) -> u32 {
         const {
             debug_assert!(SCHEDULER_TASK_COUNT_MAX > 1);

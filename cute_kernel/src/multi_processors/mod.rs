@@ -24,8 +24,6 @@ use crate::{
 };
 
 const PAE_MASK: u32 = 0b0110_0110_1000;
-const PAGING_MASK: usize = 1 << 31;
-const NOT_PAGING_MASK: usize = !PAGING_MASK;
 
 // based off the intilization code from https://wiki.osdev.org/Symmetric_Multiprocessing#AP_Initialization_Code
 // This code is fragil and contains hard addresses distances to locations. This is because it starts
@@ -135,8 +133,6 @@ ap_trampoline_end:
     ap_startup = const(AP_STARTUP),
 );
 
-static TEST_VALUE: u64 = 123;
-
 /// # Panics
 /// This function will panic if the GDT was not setup correctly
 pub extern "C" fn ap_mode_startup() -> ! {
@@ -225,6 +221,9 @@ pub fn page_stack(
 
 /// # Panics
 /// This function may panic if the frame allocation fails
+///
+/// # Errors
+/// This function returns errors if the memory mapper fails to allocate the stacks for the ap's
 pub fn init_proscessors(
     mdat: &MADT,
     local_apic: &APIC,
@@ -282,7 +281,7 @@ pub fn init_proscessors(
         local_apic.await_delivery();
 
         // I dont have delays yet ...
-        for _ in 0..100000 {}
+        for _ in 0..10_0000 {}
 
         for _ in 0..2 {
             local_apic.clear_errors();

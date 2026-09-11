@@ -102,12 +102,6 @@ impl TaskStateSegment {
         &mut self.io_bitmap
     }
 
-    /// Sets a the stack for an interupt discriptor.
-    #[inline]
-    const fn set_interupt_stack(&mut self, index: usize, ptr: u64) {
-        self.interupt_stack_table[index] = ptr;
-    }
-
     /// Pushes a stack to be used for a IST
     #[inline]
     pub fn push_ist(&mut self, ptr: u64) -> Option<InteruptStack> {

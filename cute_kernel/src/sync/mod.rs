@@ -118,7 +118,7 @@ use crate::{multi_tasking, println};
 fn mutex_test() {
     static TEST_MUTEX: Mutex<i32> = Mutex::new(0);
 
-    for i in 0..20 {
+    for _i in 0..20 {
         multi_tasking::premtive::spawn(|| {
             for _ in 0..1000 {
                 let mut value = TEST_MUTEX.lock();

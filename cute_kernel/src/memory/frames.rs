@@ -31,6 +31,13 @@ pub struct PhysFrame<S: FrameSize = Frame4Kb> {
     size: PhantomData<S>,
 }
 
+impl Copy for PhysFrame<Frame4Kb> {}
+impl Clone for PhysFrame<Frame4Kb> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl<S: FrameSize> AddAssign<usize> for PhysFrame<S> {
     #[inline]
     fn add_assign(&mut self, rhs: usize) {

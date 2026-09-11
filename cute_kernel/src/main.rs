@@ -16,10 +16,7 @@ use cute_kernel::{
     },
     display::init_writer,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
-    memory::{
-        addresses::{Address, PhysMemOffset},
-        pageing::MemoryMapper,
-    },
+    memory::{addresses::PhysMemOffset, pageing::MemoryMapper},
     multi_processors::{init_proscessors, write_trampoline},
     multi_tasking::{cooprative::Task, executor::Executor, scheduler},
     println,

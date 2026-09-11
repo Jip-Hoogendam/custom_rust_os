@@ -352,7 +352,7 @@ impl PageTable {
         let Some(l2_table) = l3_table.parse_entry(l3_index, offset) else {
             if l3_table.is_empty() {
                 let l3_entry = self.entry_mut(l4_index);
-                frame_allocator.dealloc(&l3_entry.frame());
+                frame_allocator.dealloc(l3_entry.frame());
                 l3_entry.free();
             }
             return;
@@ -361,29 +361,29 @@ impl PageTable {
         let Some(l1_table) = l2_table.parse_entry(l2_index, offset) else {
             if l2_table.is_empty() {
                 let l2_entry = l3_table.entry_mut(l3_index);
-                frame_allocator.dealloc(&l2_entry.frame());
+                frame_allocator.dealloc(l2_entry.frame());
                 l2_entry.free();
             }
             if l3_table.is_empty() {
                 let l3_entry = self.entry_mut(l4_index);
-                frame_allocator.dealloc(&l3_entry.frame());
+                frame_allocator.dealloc(l3_entry.frame());
                 l3_entry.free();
             }
             return;
         };
         if l1_table.is_empty() {
             let l1_entry = l2_table.entry_mut(l2_index);
-            frame_allocator.dealloc(&l1_entry.frame());
+            frame_allocator.dealloc(l1_entry.frame());
             l1_entry.free();
         }
         if l2_table.is_empty() {
             let l2_entry = l3_table.entry_mut(l3_index);
-            frame_allocator.dealloc(&l2_entry.frame());
+            frame_allocator.dealloc(l2_entry.frame());
             l2_entry.free();
         }
         if l3_table.is_empty() {
             let l3_entry = self.entry_mut(l4_index);
-            frame_allocator.dealloc(&l3_entry.frame());
+            frame_allocator.dealloc(l3_entry.frame());
             l3_entry.free();
         }
     }
