@@ -66,7 +66,6 @@ impl IoApic {
     fn len(&mut self) -> u32 {
         const VERSION_OFFSET: u32 = 0x1;
         const LEN_BITS: usize = 16;
-        println!("len : {}", self.read_register(VERSION_OFFSET));
         (self.read_register(VERSION_OFFSET) >> LEN_BITS) + 1
     }
 
