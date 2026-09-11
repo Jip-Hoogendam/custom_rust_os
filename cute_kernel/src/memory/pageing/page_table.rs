@@ -10,6 +10,7 @@ use crate::{
         frames::PhysFrame,
         pageing::frame_allocator::FrameAllocator,
     },
+    println,
 };
 
 /// A struct to construnct from via multiple options
@@ -44,6 +45,12 @@ impl PageEntryOptions {
     #[must_use]
     pub const fn as_u64(self) -> u64 {
         self.0
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn clean(self) -> Self {
+        Self(self.0 & !(PageEntryOption::Dirty as u64) & !(PageEntryOption::Accessed as u64))
     }
 }
 
@@ -193,6 +200,8 @@ impl Page {
         const L5_INDEX: usize = 48;
         PageTableIndex::new_truncate(self.0 >> L5_INDEX & Self::PAGE_INDEX_MASK)
     }
+
+    const MEMORY_ADDRESS_START: usize = 0x1000;
 }
 
 impl Add<usize> for Page {
@@ -200,16 +209,14 @@ impl Add<usize> for Page {
 
     #[inline]
     fn add(self, rhs: usize) -> Self::Output {
-        const MEMORY_ADDRESS_START: usize = 0x1000;
-        Self(self.0 + rhs * MEMORY_ADDRESS_START)
+        Self(self.0 + rhs * Self::MEMORY_ADDRESS_START)
     }
 }
 
 impl AddAssign<usize> for Page {
     #[inline]
     fn add_assign(&mut self, rhs: usize) {
-        const MEMORY_ADDRESS_START: usize = 0x1000;
-        self.0 += rhs * MEMORY_ADDRESS_START;
+        self.0 += rhs * Self::MEMORY_ADDRESS_START;
     }
 }
 
@@ -218,16 +225,14 @@ impl Sub<usize> for Page {
 
     #[inline]
     fn sub(self, rhs: usize) -> Self::Output {
-        const MEMORY_ADDRESS_START: usize = 0x1000;
-        Self(self.0 - rhs * MEMORY_ADDRESS_START)
+        Self(self.0 - rhs * Self::MEMORY_ADDRESS_START)
     }
 }
 
 impl SubAssign<usize> for Page {
     #[inline]
     fn sub_assign(&mut self, rhs: usize) {
-        const MEMORY_ADDRESS_START: usize = 0x1000;
-        self.0 -= rhs * MEMORY_ADDRESS_START;
+        self.0 -= rhs * Self::MEMORY_ADDRESS_START;
     }
 }
 
@@ -301,7 +306,7 @@ impl PageTable {
         let entry = self.entry_mut(index);
 
         let phys_frame = if entry.present() {
-            if entry.options() != options {
+            if entry.options().clean() != options {
                 Err(PageTableError::IncompatiblePageOptions)?;
             }
             entry.frame()
@@ -311,6 +316,7 @@ impl PageTable {
                 .ok_or(PageTableError::CouldNotCreatePageTable)?;
             physframe.zero(offset);
             entry.write(&physframe, options);
+
             physframe
         };
 
@@ -408,6 +414,8 @@ impl PageTable {
             l3_table.parse_or_alloc_entry(page.l3_index(), offset, options, frame_allocator)?;
         let l1_table =
             l2_table.parse_or_alloc_entry(page.l2_index(), offset, options, frame_allocator)?;
+
+        page.flush();
         Ok(l1_table)
     }
 }

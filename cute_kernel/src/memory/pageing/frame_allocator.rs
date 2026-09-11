@@ -1,11 +1,15 @@
-use core::{error::Error, fmt::Display, marker::PhantomData};
+use core::{cmp::max, error::Error, fmt::Display, marker::PhantomData};
 
 use alloc::slice;
 use bootloader_api::info::{MemoryRegionKind, MemoryRegions};
 
-use crate::memory::{
-    addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
-    frames::{Frame4Kb, FrameSize, PhysFrame},
+use crate::{
+    memory::{
+        addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
+        frames::{Frame4Kb, FrameSize, PhysFrame},
+    },
+    println,
+    variables::FRAME_ALLOCATOR_BEGIN_FRAME_OFFSET,
 };
 
 pub struct FrameBitMap<T: FrameSize = Frame4Kb> {
@@ -19,25 +23,36 @@ pub struct FrameBitMap<T: FrameSize = Frame4Kb> {
 impl<T: FrameSize> FrameBitMap<T> {
     #[must_use]
     pub fn new(mem_bytes_total: u64, start: VirtAddr) -> Self {
+        let (required_bytes, padding, bit_padding) = Self::reqired_size_bytes(mem_bytes_total);
         let bitmap = unsafe {
             slice::from_raw_parts_mut(
                 start.to_mut_ptr(),
-                Self::reqired_size_bytes(mem_bytes_total).div_ceil(size_of::<usize>()),
+                required_bytes.div_ceil(size_of::<usize>()),
             )
         };
 
         #[allow(clippy::cast_possible_truncation)]
-        let pages = (mem_bytes_total / T::SIZE as u64).div_ceil(u64::from(u8::BITS)) as usize;
+        let pages = mem_bytes_total as usize / T::SIZE;
 
-        for i in &mut *bitmap {
-            *i = 0;
+        for i in 0..(bitmap.len() - padding) {
+            bitmap[i] = 0;
+        }
+
+        //Fill in padding
+        for i in (bitmap.len() - padding)..bitmap.len() {
+            bitmap[i] = usize::MAX;
+        }
+        for shift in 0..bit_padding {
+            bitmap[bitmap.len() - padding - 1] |= 1 << shift;
         }
 
         Self {
             inner: bitmap,
             pages,
             page_free: pages,
-            last_allocation_index: usize::MIN,
+            last_allocation_index: FRAME_ALLOCATOR_BEGIN_FRAME_OFFSET
+                .div_ceil(T::SIZE)
+                .div_ceil(usize::BITS as usize),
             size: PhantomData,
         }
     }
@@ -58,11 +73,17 @@ impl<T: FrameSize> FrameBitMap<T> {
     //Returns the amount of bytes needed to store the given memory padded to the nearest size of
     //usize;
     #[must_use]
-    pub const fn reqired_size_bytes(mem_bytes_total: u64) -> usize {
+    pub const fn reqired_size_bytes(mem_bytes_total: u64) -> (usize, usize, usize) {
         #[allow(clippy::cast_possible_truncation)]
-        let bytes_reqired = (mem_bytes_total / T::SIZE as u64).div_ceil(u8::BITS as u64) as usize;
+        let bytes_reqired = mem_bytes_total / T::SIZE as u64;
+        let bit_padding = bytes_reqired % u8::BITS as u64;
+        let bytes_reqired = bytes_reqired.div_ceil(u8::BITS as u64) as usize;
         let fmt_padding = bytes_reqired % size_of::<usize>();
-        bytes_reqired + fmt_padding
+        (
+            bytes_reqired + fmt_padding,
+            fmt_padding,
+            bit_padding as usize,
+        )
     }
 
     ///Checks if a frame is used or not. Returns Nothing if it does not exist
@@ -88,7 +109,7 @@ impl<T: FrameSize> FrameBitMap<T> {
                 self.last_allocation_index = index;
                 return Some((
                     self.last_allocation_index,
-                    self.inner[self.last_allocation_index].count_zeros() as usize,
+                    self.inner[self.last_allocation_index].trailing_ones() as usize,
                 ));
             }
         }
@@ -97,7 +118,7 @@ impl<T: FrameSize> FrameBitMap<T> {
                 self.last_allocation_index = index;
                 return Some((
                     self.last_allocation_index,
-                    self.inner[self.last_allocation_index].count_zeros() as usize,
+                    self.inner[self.last_allocation_index].trailing_ones() as usize,
                 ));
             }
         }
@@ -146,13 +167,14 @@ impl FrameAllocator {
     #[inline]
     pub fn allocate(&mut self) -> Option<PhysFrame<Frame4Kb>> {
         let (block, index) = self.bitmap.seek_free_frame_block()?;
-        let frame = PhysFrame::<Frame4Kb>::new(PhysAddr::new((block + index) * Frame4Kb::SIZE));
+        let frame_base = (block * usize::BITS as usize + index) * Frame4Kb::SIZE;
+        let frame = PhysFrame::<Frame4Kb>::new(PhysAddr::new(frame_base));
         self.bitmap.set_frame(&frame, true);
         Some(frame)
     }
 
     /// Allocates a specific requested frame
-    /// Returns false if it was already allocated.
+    /// Returns false if it could not be allocated.
     #[must_use = "You should check that the allocation actually could be completed"]
     #[inline]
     pub fn allocate_exact(&mut self, frame: &PhysFrame) -> bool {
@@ -177,26 +199,30 @@ impl FrameAllocator {
             .filter(|region| region.kind == MemoryRegionKind::Usable)
             .fold(0, |_c, region| region.end);
 
-        let mut first_free = PhysAddr::new(0);
+        let mut first_free = PhysAddr::new(FRAME_ALLOCATOR_BEGIN_FRAME_OFFSET);
         let mut region_size = 0;
 
         for region in memory_map.iter() {
             if region.kind == MemoryRegionKind::Usable {
-                region_size += region.end - region.start;
-                if region_size >= FrameBitMap::<Frame4Kb>::reqired_size_bytes(mem_total) as u64 {
+                region_size += region
+                    .end
+                    .saturating_sub(max(region.start, FRAME_ALLOCATOR_BEGIN_FRAME_OFFSET as u64));
+                if region_size >= FrameBitMap::<Frame4Kb>::reqired_size_bytes(mem_total).0 as u64 {
                     break;
                 }
             } else {
-                first_free = PhysAddr::from(region.end);
+                first_free =
+                    PhysAddr::from(max(region.end, FRAME_ALLOCATOR_BEGIN_FRAME_OFFSET as u64));
             }
         }
 
-        if region_size < FrameBitMap::<Frame4Kb>::reqired_size_bytes(mem_total) as u64 {
+        if region_size < FrameBitMap::<Frame4Kb>::reqired_size_bytes(mem_total).0 as u64 {
             Err(FrameAllocatorError::NoRegionFreeToAllocateAllocator)?;
         }
 
         let mut bitmap = FrameBitMap::new(mem_total, first_free + offset);
 
+        // pre allocate reserved memory
         let mut last_usable = 0;
         for region in memory_map.iter() {
             if region.kind == MemoryRegionKind::Usable {
@@ -208,6 +234,7 @@ impl FrameAllocator {
             }
         }
 
+        //Pre allocate frame allocator bitmap region
         let bitmap_page_size = bitmap.byte_size() + (bitmap.byte_size() % Frame4Kb::SIZE);
         for region in (0..bitmap_page_size).step_by(Frame4Kb::SIZE) {
             let frame = PhysFrame::<Frame4Kb>::new(first_free + region);

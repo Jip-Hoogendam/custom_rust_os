@@ -125,8 +125,6 @@ impl BinaryBuddy {
     ///finds the next usable block.
     #[inline]
     fn next_block(block: *mut BuddyBlock) -> *mut BuddyBlock {
-        println!("PTR : {:?}", block);
-        println!("CAST_PTR : {:?}", unsafe { block.cast::<u8>() });
         unsafe { block.byte_add((*block).size) }
     }
 
@@ -134,13 +132,10 @@ impl BinaryBuddy {
     fn split_block(block: *mut BuddyBlock, size: usize) -> *mut BuddyBlock {
         if !block.is_null() && size != 0 {
             unsafe {
-                println!("size = {}", (*block).size);
                 while size < (*block).size / 2 {
                     let new_size = (*block).size / 2;
-                    println!("new_size = {}", new_size);
                     (*block).size = new_size;
                     let new_block = Self::next_block(block);
-                    println!("New Block: {:?}", new_block);
                     (*new_block).size = new_size;
                     (*new_block).free = true;
                 }

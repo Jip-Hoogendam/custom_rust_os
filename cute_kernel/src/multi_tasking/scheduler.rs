@@ -18,7 +18,10 @@ use crate::{
     multi_tasking::{TaskId, premtive::tcb::Thread},
     println,
     tools::cpu_id,
-    variables::{TASK_COUNT_MAX, TASK_CYCLES_MAX, TASK_CYCLES_MIN, TASKS_SLOPE_FACTOR},
+    variables::{
+        SCHEDULER_TASK_COUNT_MAX, SCHEDULER_TASK_CYCLES_MAX, SCHEDULER_TASK_CYCLES_MIN,
+        SCHEDULER_TASKS_SLOPE_FACTOR,
+    },
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -193,13 +196,16 @@ impl Scheduler {
     /// FIXME: Create a scheduler that bases the time based off the taskinfo
     fn compute_task_time(task_count: usize, _task: &TaskInfo) -> u32 {
         const {
-            debug_assert!(TASK_COUNT_MAX > 1);
-            debug_assert!(TASK_CYCLES_MIN < TASK_CYCLES_MAX);
+            debug_assert!(SCHEDULER_TASK_COUNT_MAX > 1);
+            debug_assert!(SCHEDULER_TASK_CYCLES_MIN < SCHEDULER_TASK_CYCLES_MAX);
         }
-        let task_count = min(task_count as u32, TASK_COUNT_MAX);
-        let n = (-(task_count as f32 / TASK_COUNT_MAX as f32)) + 1.;
-        let pow_n = [n; TASKS_SLOPE_FACTOR].iter().fold(1f32, |a, b| a * b);
-        (pow_n * (TASK_CYCLES_MAX - TASK_CYCLES_MIN) as f32) as u32 + TASK_CYCLES_MIN
+        let task_count = min(task_count as u32, SCHEDULER_TASK_COUNT_MAX);
+        let n = (-(task_count as f32 / SCHEDULER_TASK_COUNT_MAX as f32)) + 1.;
+        let pow_n = [n; SCHEDULER_TASKS_SLOPE_FACTOR]
+            .iter()
+            .fold(1f32, |a, b| a * b);
+        (pow_n * (SCHEDULER_TASK_CYCLES_MAX - SCHEDULER_TASK_CYCLES_MIN) as f32) as u32
+            + SCHEDULER_TASK_CYCLES_MIN
     }
 
     //Gives the next task that needs to be scheduled

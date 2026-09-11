@@ -76,6 +76,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     println!("Init heap");
     allocator::init_heap(&mut memory_mapper).expect("heap allocation failed");
 
+    let test = VirtAddr::new(0x6969DF4A0000);
+    println!("read : {}", unsafe { test.to_ref::<usize>() });
+
     InteruptGaurd::<BlockInterupts>::scope(|g| {
         println!("Initlilizing Scheduler");
         scheduler::SCHEDULER.init(4, g);

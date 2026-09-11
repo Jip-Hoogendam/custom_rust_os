@@ -190,12 +190,14 @@ const IDT: u64 = 0x8a50;
 /// # Panics
 /// This function can panic if the page allocator fails to allocate certain frames
 pub fn write_trampoline(mapper: &mut MemoryMapper) {
-    mapper.allocate_range(
-        VirtAddr::new(TRAMPOLINE_ADDRESS as usize),
-        PageEntryOption::ReadWrite,
-        PhysFrame::new(PhysAddr::new(TRAMPOLINE_ADDRESS as usize)),
-        PhysFrame::new(PhysAddr::new(TRAMPOLINE_ADDRESS as usize + 0xFFF)),
-    );
+    mapper
+        .allocate_range(
+            VirtAddr::new(TRAMPOLINE_ADDRESS as usize),
+            PageEntryOption::ReadWrite | PageEntryOption::Present,
+            PhysFrame::new(PhysAddr::new(TRAMPOLINE_ADDRESS as usize)),
+            PhysFrame::new(PhysAddr::new(TRAMPOLINE_ADDRESS as usize + 0x1FFF)),
+        )
+        .expect("Expect 0x8000 to be writable");
 
     unsafe {
         copy_nonoverlapping(

@@ -1,14 +1,17 @@
 use core::{error::Error, fmt::Display};
 
 use bootloader_api::info::MemoryRegions;
+use x86_64::PhysAddr;
 
 use crate::{
     memory::{
-        addresses::{PhysMemOffset, VirtAddr},
+        addresses::{Address, PhysMemOffset, VirtAddr},
         frames::{Frame4Kb, PhysFrame},
         pageing::{
             frame_allocator::FrameAllocator,
-            page_table::{Page, PageEntryOption, PageEntryOptions, PageTable, PageTableError},
+            page_table::{
+                Page, PageEntryOption, PageEntryOptions, PageTable, PageTableEntry, PageTableError,
+            },
         },
     },
     print, println,
@@ -117,19 +120,14 @@ impl MemoryMapper {
     pub fn allocate_range(
         &mut self,
         start: VirtAddr,
-        options: PageEntryOption,
+        options: PageEntryOptions,
         begin: PhysFrame,
         end: PhysFrame,
     ) -> Result<RegionPromise, MemoryMapperError> {
         let mut page = Page::from_containing(start);
         let mut l1_table = self
             .l4_page_table
-            .allocate_page_table(
-                page,
-                options | PageEntryOption::Present | PageEntryOption::ReadWrite,
-                self.offset,
-                &mut self.frame_alloc,
-            )
+            .allocate_page_table(page, options, self.offset, &mut self.frame_alloc)
             .map_err(MemoryMapperError::PageError)?;
 
         let mut frames = 0;
@@ -142,14 +140,11 @@ impl MemoryMapper {
                     break 'outer;
                 }
 
-                if self.frame_alloc.allocate_exact(&frame) {
+                if !self.frame_alloc.allocate_exact(&frame) {
                     break 'outer;
                 }
 
-                entry.write(
-                    &frame,
-                    options | PageEntryOption::Present | PageEntryOption::ReadWrite,
-                );
+                entry.write(&frame, options);
                 page.flush();
 
                 frame += 1;
@@ -158,7 +153,7 @@ impl MemoryMapper {
             }
             if let Ok(next_table) = self.l4_page_table.allocate_page_table(
                 page,
-                options | PageEntryOption::Present | PageEntryOption::ReadWrite,
+                options,
                 self.offset,
                 &mut self.frame_alloc,
             ) {
@@ -167,6 +162,7 @@ impl MemoryMapper {
                 break 'outer;
             }
         }
+        println!("Frames : {}", frames);
 
         // if not all frame allocated return incomplete instead
         if frame == end {
@@ -199,6 +195,7 @@ impl MemoryMapper {
             .allocate_page_table(page, options, self.offset, &mut self.frame_alloc)
             .map_err(MemoryMapperError::PageError)?;
         let size = bytes.div_ceil(PhysFrame::<Frame4Kb>::SIZE);
+
         let mut allocated = 0;
 
         'outer: while allocated <= size {
