@@ -43,13 +43,6 @@ impl PhysMemOffset {
     pub const fn inner(&self) -> VirtAddr {
         self.0
     }
-
-    //Converts this type to a x86_64 lib variant while i am transitioning away from this crate
-    #[inline]
-    #[must_use]
-    pub const fn to_x86_lib(&self) -> x86_64::VirtAddr {
-        self.0.to_x86_lib()
-    }
 }
 
 impl Add<PhysAddr> for PhysMemOffset {
@@ -82,13 +75,6 @@ impl PhysAddr {
     #[inline]
     pub const fn to_virt(&self, offset: PhysMemOffset) -> VirtAddr {
         VirtAddr::new(self.0 + offset.0.0)
-    }
-
-    //Converts this type to a x86_64 lib variant while i am transitioning away from this crate
-    #[inline]
-    #[must_use]
-    pub const fn to_x86_lib(&self) -> x86_64::PhysAddr {
-        x86_64::PhysAddr::new(self.0 as u64)
     }
 }
 
@@ -194,13 +180,6 @@ impl VirtAddr {
     #[inline]
     pub fn to_phys(&self, offset: PhysMemOffset) -> PhysAddr {
         PhysAddr::new(self.0 - offset.0.0)
-    }
-
-    //Converts this type to a x86_64 lib variant while i am transitioning away from this crate
-    #[inline]
-    #[must_use]
-    pub const fn to_x86_lib(&self) -> x86_64::VirtAddr {
-        x86_64::VirtAddr::new(self.0 as u64)
     }
 
     #[inline]

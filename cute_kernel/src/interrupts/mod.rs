@@ -1,4 +1,7 @@
-use core::{arch::asm, fmt::Display};
+use core::{
+    arch::{self, asm},
+    fmt::Display,
+};
 
 use spin::MutexGuard;
 
@@ -118,5 +121,5 @@ pub extern "C" fn call_switch_task() {
 #[test_case]
 fn test_breakpoint_exception() {
     // invoke a breakpoint exception
-    x86_64::instructions::interrupts::int3();
+    crate::arch::instructions::int3();
 }

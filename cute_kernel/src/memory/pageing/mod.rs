@@ -1,7 +1,6 @@
 use core::{error::Error, fmt::Display};
 
 use bootloader_api::info::MemoryRegions;
-use x86_64::PhysAddr;
 
 use crate::{
     memory::{

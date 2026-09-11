@@ -15,8 +15,6 @@ use core::{
     ptr::{read_volatile, write_volatile},
 };
 
-use x86_64::instructions::port::Port;
-
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     memory::addresses::VirtAddr,
@@ -319,11 +317,10 @@ impl APIC {
     where
         T: InteruptController,
     {
+        use crate::arch::port::Port;
         //Disable pics
-        unsafe {
-            Port::new(PIC1_DATA).write(PIC_OFF);
-            Port::new(PIC2_DATA).write(PIC_OFF);
-        }
+        Port::new(PIC1_DATA).write(PIC_OFF);
+        Port::new(PIC2_DATA).write(PIC_OFF);
 
         // Enable the apic in case if it was not enabled.
         let MSRValues { eax, edx } = unsafe { read_cpu_msr(IA32_APIC_BASE_MSR) };

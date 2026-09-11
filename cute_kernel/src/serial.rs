@@ -1,4 +1,7 @@
-use crate::sync::Mutex;
+use crate::{
+    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
+    sync::Mutex,
+};
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
 
@@ -13,9 +16,8 @@ lazy_static! {
 #[doc(hidden)]
 pub fn serial_print_fn(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
-    use x86_64::instructions::interrupts;
 
-    interrupts::without_interrupts(|| {
+    InteruptGaurd::<BlockInterupts>::scope(|_g| {
         SERIAL1
             .lock()
             .write_fmt(args)

@@ -70,10 +70,23 @@ impl<T: InteruptController> InteruptGaurd<T> {
 
     /// Unblocks the inteupts then halts the processor checking if there are no interupts scheduled
     #[inline]
-    pub fn unblock_hlt(&self) {
+    fn unblock_hlt() {
         unsafe {
-            asm!("sti; hlt", options(nomem, nostack));
-            asm!("cli", options(nomem, nostack));
+            asm!("sti; hlt", options(nomem, nostack, preserves_flags));
+            asm!("cli", options(nomem, nostack, preserves_flags));
+        }
+    }
+
+    #[inline]
+    pub fn block_halt_if<F>(condition: F)
+    where
+        F: FnOnce() -> bool,
+    {
+        T::block();
+        if condition() {
+            Self::unblock_hlt();
+        } else {
+            T::unblock();
         }
     }
 

@@ -87,14 +87,8 @@ impl Executor {
     }
 
     fn sleep_if_idle(&self) {
-        use x86_64::instructions::interrupts::{self, enable_and_hlt};
-
-        interrupts::disable();
-        if self.task_queue.is_empty() {
-            enable_and_hlt();
-        } else {
-            interrupts::enable();
-        }
+        use crate::interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd};
+        InteruptGaurd::<BlockInterupts>::block_halt_if(|| self.task_queue.is_empty());
     }
 }
 
