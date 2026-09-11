@@ -306,9 +306,10 @@ impl PageTable {
             }
             entry.frame()
         } else {
-            let physframe = frame_allocator
+            let mut physframe = frame_allocator
                 .allocate()
                 .ok_or(PageTableError::CouldNotCreatePageTable)?;
+            physframe.zero(offset);
             entry.write(&physframe, options);
             physframe
         };

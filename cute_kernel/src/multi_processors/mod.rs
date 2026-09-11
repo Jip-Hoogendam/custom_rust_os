@@ -5,12 +5,6 @@ use core::{
 };
 
 use alloc::vec;
-use x86_64::{
-    PhysAddr, VirtAddr,
-    structures::paging::{
-        FrameAllocator, Mapper, Page, PageTableFlags, PhysFrame, Size4KiB, mapper::MapToError,
-    },
-};
 
 use crate::{
     DT,
@@ -19,6 +13,11 @@ use crate::{
         madt::{MADT, record::MADTRecord},
     },
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
+    memory::{
+        addresses::{Address, PhysAddr, VirtAddr},
+        frames::{Frame4Kb, PhysFrame},
+        pageing::{MemoryMapper, MemoryMapperError, page_table::PageEntryOption},
+    },
     println,
     tables::gdt::SystemSegmentDiscriptor,
     tools::cpu_id,
@@ -190,29 +189,13 @@ const IDT: u64 = 0x8a50;
 
 /// # Panics
 /// This function can panic if the page allocator fails to allocate certain frames
-pub fn write_trampoline(
-    mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) {
-    // page lower end
-    let page_range = {
-        let trampoline_start = VirtAddr::new(u64::from(TRAMPOLINE_ADDRESS));
-        let trampoline_end = trampoline_start + 0x0000_0FFF;
-        let trampoline_start_page = Page::containing_address(trampoline_start);
-        let trampoline_end_page = Page::containing_address(trampoline_end);
-        Page::range_inclusive(trampoline_start_page, trampoline_end_page)
-    };
-
-    for page in page_range {
-        let frame = PhysFrame::containing_address(PhysAddr::new(page.start_address().as_u64()));
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-        unsafe {
-            mapper
-                .map_to(page, frame, flags, frame_allocator)
-                .unwrap()
-                .flush();
-        }
-    }
+pub fn write_trampoline(mapper: &mut MemoryMapper) {
+    mapper.allocate_range(
+        VirtAddr::new(TRAMPOLINE_ADDRESS as usize),
+        PageEntryOption::ReadWrite,
+        PhysFrame::new(PhysAddr::new(TRAMPOLINE_ADDRESS as usize)),
+        PhysFrame::new(PhysAddr::new(TRAMPOLINE_ADDRESS as usize + 0xFFF)),
+    );
 
     unsafe {
         copy_nonoverlapping(
@@ -226,29 +209,15 @@ pub fn write_trampoline(
 /// # Errors
 /// Will retrun a `FrameAllocationFailed` if the allocator fails to allocate the frames
 pub fn page_stack(
-    start: usize,
+    start: VirtAddr,
     size: usize,
-    mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) -> Result<(), MapToError<Size4KiB>> {
-    let page_range = {
-        let stack_start = VirtAddr::new(start as u64);
-        let stack_end = stack_start + size as u64 - 1u64;
-        let stack_start_page = Page::containing_address(stack_start);
-        let stack_end_page = Page::containing_address(stack_end);
-        Page::range_inclusive(stack_start_page, stack_end_page)
-    };
-
-    for page in page_range {
-        let frame = frame_allocator
-            .allocate_frame()
-            .ok_or(MapToError::FrameAllocationFailed)?;
-        let flags = PageTableFlags::PRESENT | PageTableFlags::WRITABLE;
-
-        unsafe {
-            mapper.map_to(page, frame, flags, frame_allocator)?.flush();
-        }
-    }
+    memory_mapper: &mut MemoryMapper,
+) -> Result<(), MemoryMapperError> {
+    memory_mapper.allocate_bytes(
+        start,
+        PageEntryOption::Present | PageEntryOption::ReadWrite,
+        size,
+    )?;
     Ok(())
 }
 
@@ -259,9 +228,8 @@ pub fn init_proscessors(
     local_apic: &APIC,
     kernel_stack_bottom: u64,
     kernel_stack_size: u64,
-    mapper: &mut impl Mapper<Size4KiB>,
-    frame_allocator: &mut impl FrameAllocator<Size4KiB>,
-) {
+    memory_mapper: &mut MemoryMapper,
+) -> Result<(), MemoryMapperError> {
     let idtr = {
         let mut dt = DT.lock();
         let idt = dt.get_mut_idt();
@@ -296,12 +264,10 @@ pub fn init_proscessors(
             println!("start : {:#x}, size {:#x}", start, offset);
 
             page_stack(
-                start as usize,
+                VirtAddr::new(start as usize),
                 kernel_stack_size as usize,
-                mapper,
-                frame_allocator,
-            )
-            .expect("Failed to allocate page for kernel");
+                memory_mapper,
+            )?;
         }
     }
 
@@ -324,4 +290,5 @@ pub fn init_proscessors(
             local_apic.await_delivery();
         }
     }
+    Ok(())
 }

@@ -16,6 +16,7 @@ use crate::{
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
+    println,
     tools::cpu_id,
     variables::{TASK_COUNT_MAX, TASK_CYCLES_MAX, TASK_CYCLES_MIN, TASKS_SLOPE_FACTOR},
 };

@@ -3,7 +3,9 @@ use core::{
     ops::{Add, AddAssign},
 };
 
-use crate::memory::addresses::{Address, PhysAddr};
+use alloc::slice;
+
+use crate::memory::addresses::{Address, PhysAddr, PhysMemOffset};
 
 pub trait FrameSize {
     const SIZE: usize;
@@ -67,6 +69,18 @@ impl<S: FrameSize> PhysFrame<S> {
         Self {
             address,
             size: PhantomData,
+        }
+    }
+
+    pub fn zero(&mut self, offset: PhysMemOffset) {
+        unsafe {
+            let slice = slice::from_raw_parts_mut(
+                (self.address + offset).to_mut_ptr::<usize>(),
+                S::SIZE / size_of::<usize>(),
+            );
+            for block in slice {
+                *block = 0;
+            }
         }
     }
 

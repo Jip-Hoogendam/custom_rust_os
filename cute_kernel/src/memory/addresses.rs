@@ -27,6 +27,10 @@ impl PhysMemOffset {
         }
     }
 
+    pub const fn null() -> Self {
+        Self(VirtAddr::null())
+    }
+
     /// To convert from virt addr
     #[inline]
     #[must_use]
@@ -178,6 +182,12 @@ impl VirtAddr {
     #[inline]
     pub const fn new(addr: usize) -> Self {
         Self(addr)
+    }
+
+    #[must_use]
+    #[inline]
+    pub const fn null() -> Self {
+        Self(0)
     }
 
     #[must_use]

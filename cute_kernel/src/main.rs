@@ -6,7 +6,6 @@
 
 extern crate alloc;
 
-use alloc::boxed;
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
     acpi::{
@@ -19,15 +18,12 @@ use cute_kernel::{
     halt_loop,
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{
-        self,
         addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
-        frames::PhysFrame,
-        pageing::{MemoryMapper, frame_allocator::FrameAllocator, page_table::PageEntryOption},
+        pageing::{MemoryMapper, page_table::PageEntryOption},
     },
     multi_processors::{init_proscessors, write_trampoline},
-    multi_tasking::{self, cooprative::Task, executor::Executor, premtive::spawn, scheduler},
-    println, serial_println,
-    sync::Mutex,
+    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
+    println,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
 };
@@ -59,19 +55,6 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let mut memory_mapper = MemoryMapper::init(&boot_info.memory_regions, phys_mem_offset)
         .expect("Expect memory mapper to be made");
 
-    println!("Allocating exact");
-    let alloc = memory_mapper
-        .allocate_range(
-            VirtAddr::new(0xDEADDEAD000),
-            PageEntryOption::Present,
-            PhysFrame::new(PhysAddr::new(0xA000)),
-            PhysFrame::new(PhysAddr::new(0xA100)),
-        )
-        .unwrap();
-    memory_mapper.deallocate(alloc);
-
-    halt_loop();
-
     println!("Load MDAT");
     let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables
         .tables_iter(phys_mem_offset)
@@ -87,20 +70,15 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     });
 
     use cute_kernel::allocator;
-    use cute_kernel::memory::BootFrameAllocator;
 
-    let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_regions) };
     println!("Init boot frame allocator");
 
-    println!("get phys mem offset");
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    println!("memory mapper initlized");
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap allocation failed");
-    println!("Heap created");
+    println!("Init heap");
+    allocator::init_heap(&mut memory_mapper).expect("heap allocation failed");
 
     InteruptGaurd::<BlockInterupts>::scope(|g| {
+        println!("Initlilizing Scheduler");
         scheduler::SCHEDULER.init(4, g);
-        println!("Scheduler initlized");
         println!("Setting apic timer");
         mdat.init_apic(phys_mem_offset, &LOCAL_APIC, g);
         println!("Setting up io apic");
@@ -118,15 +96,16 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             g,
         );
 
-        write_trampoline(&mut mapper, &mut frame_allocator);
+        write_trampoline(&mut memory_mapper);
+
         init_proscessors(
             mdat,
             &LOCAL_APIC,
             boot_info.kernel_stack_bottom,
             boot_info.kernel_stack_len,
-            &mut mapper,
-            &mut frame_allocator,
-        );
+            &mut memory_mapper,
+        )
+        .expect("Multiple prossessors failed to start");
     });
 
     #[cfg(test)]

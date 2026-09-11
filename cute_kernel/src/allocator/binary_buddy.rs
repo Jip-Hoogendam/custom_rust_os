@@ -1,6 +1,6 @@
 use core::{alloc::GlobalAlloc, mem, ptr::null_mut};
 
-use crate::allocator::Locked;
+use crate::{allocator::Locked, memory::addresses::PhysMemOffset, println};
 
 #[global_allocator]
 pub static ALLOCATOR: Locked<BinaryBuddy> = Locked::new(BinaryBuddy::new());
@@ -54,9 +54,9 @@ impl BinaryBuddy {
     ///
     /// # Panics
     /// Panics if the set size is not a power of 2
-    pub unsafe fn init(&mut self, start: usize, size: usize) {
+    pub unsafe fn init(&mut self, offset: PhysMemOffset, size: usize) {
         assert!(size.is_power_of_two(), "allocator size must be power of 2 ");
-        self.start = start as *mut BuddyBlock;
+        self.start = offset.inner().to_mut_ptr();
         unsafe { (*self.start).size = size };
         unsafe { (*self.start).free = true };
         self.end = Self::next_block(self.start);
@@ -67,6 +67,7 @@ impl BinaryBuddy {
         let mut res_block: *mut BuddyBlock = null_mut();
         let mut block = self.start;
         let mut buddy = Self::next_block(block);
+
         if buddy == self.end && unsafe { (*block).free } {
             return Some(Self::split_block(self.start, size));
         }
@@ -117,6 +118,7 @@ impl BinaryBuddy {
         if res_block.is_null() {
             None
         } else {
+            println!("Splitting");
             Some(Self::split_block(res_block, size))
         }
     }
@@ -132,9 +134,12 @@ impl BinaryBuddy {
 
     ///splits the block into the 2 smaller blocks
     fn split_block(block: *mut BuddyBlock, size: usize) -> *mut BuddyBlock {
+        println!("got here !");
         if !block.is_null() && size != 0 {
             unsafe {
+                println!("size = ", (*block).size / 2));
                 while size < (*block).size / 2 {
+                    println!("split !");
                     let new_size = (*block).size / 2;
                     (*block).size = new_size;
                     let new_block = Self::next_block(block);

@@ -2,14 +2,17 @@ use core::{error::Error, fmt::Display};
 
 use bootloader_api::info::MemoryRegions;
 
-use crate::memory::{
+use crate::{
+    memory::{
         addresses::{PhysMemOffset, VirtAddr},
         frames::{Frame4Kb, PhysFrame},
         pageing::{
             frame_allocator::FrameAllocator,
-            page_table::{Page, PageEntryOption, PageTable, PageTableError},
+            page_table::{Page, PageEntryOption, PageEntryOptions, PageTable, PageTableError},
         },
-    };
+    },
+    print, println,
+};
 
 pub mod frame_allocator;
 pub mod page_table;
@@ -187,27 +190,21 @@ impl MemoryMapper {
     pub fn allocate_bytes(
         &mut self,
         start: VirtAddr,
-        options: PageEntryOption,
+        options: PageEntryOptions,
         bytes: usize,
     ) -> Result<RegionPromise, MemoryMapperError> {
         let mut page = Page::from_containing(start);
         let mut l1_table = self
             .l4_page_table
-            .allocate_page_table(
-                page,
-                options | PageEntryOption::Present | PageEntryOption::ReadWrite,
-                self.offset,
-                &mut self.frame_alloc,
-            )
+            .allocate_page_table(page, options, self.offset, &mut self.frame_alloc)
             .map_err(MemoryMapperError::PageError)?;
         let size = bytes.div_ceil(PhysFrame::<Frame4Kb>::SIZE);
-        let mut to_allocate = size;
+        let mut allocated = 0;
 
-        // allocate all to allocate
-        'outer: while to_allocate > 0 {
+        'outer: while allocated <= size {
             let index = page.l1_index();
             for entry in l1_table.iter_from(index) {
-                if entry.present() || to_allocate == 0 {
+                if entry.present() || allocated == size {
                     break 'outer;
                 }
 
@@ -215,18 +212,15 @@ impl MemoryMapper {
                     break 'outer;
                 };
 
-                entry.write(
-                    &frame,
-                    options | PageEntryOption::Present | PageEntryOption::ReadWrite,
-                );
+                entry.write(&frame, options);
 
                 page.flush();
                 page += 1;
-                to_allocate -= 1;
+                allocated += 1;
             }
             if let Ok(next_table) = self.l4_page_table.allocate_page_table(
                 page,
-                options | PageEntryOption::Present | PageEntryOption::ReadWrite,
+                options,
                 self.offset,
                 &mut self.frame_alloc,
             ) {
@@ -237,16 +231,16 @@ impl MemoryMapper {
         }
 
         // if not all frame allocated return incomplete instead
-        if to_allocate > 0 {
-            Err(MemoryMapperError::OutOfMemoryIncomplete(RegionPromise {
-                offset: PhysMemOffset::from_virt(start),
-                frames: size - to_allocate,
-            }))
-        } else {
+        if allocated == size {
             Ok(RegionPromise {
                 offset: PhysMemOffset::from_virt(start),
-                frames: size - to_allocate,
+                frames: size,
             })
+        } else {
+            Err(MemoryMapperError::OutOfMemoryIncomplete(RegionPromise {
+                offset: PhysMemOffset::from_virt(start),
+                frames: size - allocated,
+            }))
         }
     }
 
