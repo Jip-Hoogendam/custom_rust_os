@@ -24,16 +24,20 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     use cute_kernel::allocator;
-    use cute_kernel::memory::{self, BootFrameAllocator};
 
     InteruptGaurd::<BlockInterupts>::scope(|g| {
         cute_kernel::init(g);
     });
 
     let phys_mem_offset = PhysMemOffset::get(boot_info);
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_regions) };
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap initialization failed");
+
+    let mut memory_mapper = cute_kernel::memory::pageing::MemoryMapper::init(
+        &boot_info.memory_regions,
+        phys_mem_offset,
+    )
+    .expect("Expect memory mapper to be made");
+
+    allocator::init_heap(&mut memory_mapper).expect("heap initialization failed");
 
     test_main();
     loop {}

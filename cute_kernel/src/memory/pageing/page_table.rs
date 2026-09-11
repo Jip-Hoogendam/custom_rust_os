@@ -4,7 +4,7 @@ use core::{
 };
 
 use crate::{
-    arch::x86::registers::Register,
+    arch::registers::Register,
     memory::{
         addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
         frames::PhysFrame,
@@ -252,7 +252,7 @@ impl PageTable {
     /// Loads the l4 page from the cr3 register
     #[must_use]
     pub fn load(offset: PhysMemOffset) -> &'static mut Self {
-        use crate::arch::x86::registers::Cr3;
+        use crate::arch::registers::Cr3;
         let cr3 = Cr3::read();
         let address = cr3.l4_table_frame().get_base() + offset;
         unsafe { address.to_mut_ref() }

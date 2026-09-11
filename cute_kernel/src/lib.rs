@@ -130,7 +130,7 @@ where
 
 pub fn halt_loop() -> ! {
     loop {
-        x86_64::instructions::hlt();
+        arch::instructions::hlt();
     }
 }
 
@@ -233,12 +233,13 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
     });
 
     use allocator;
-    use memory::BootFrameAllocator;
+
+    let mut memory_mapper =
+        memory::pageing::MemoryMapper::init(&boot_info.memory_regions, phys_mem_offset)
+            .expect("Expect memory mapper to be made");
 
     //Init allocator
-    let mut frame_allocator = unsafe { BootFrameAllocator::init(&boot_info.memory_regions) };
-    let mut mapper = unsafe { memory::init(phys_mem_offset) };
-    allocator::init_heap(&mut mapper, &mut frame_allocator).expect("heap allocation failed");
+    allocator::init_heap(&mut memory_mapper).expect("heap allocation failed");
 
     //load MDAT tables
     let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables
