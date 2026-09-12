@@ -18,10 +18,11 @@ use cute_kernel::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{addresses::PhysMemOffset, pageing::MemoryMapper},
     multi_processors::{init_proscessors, write_trampoline},
-    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
+    multi_tasking::{cooprative::Task, executor::Executor, premtive::spawn, scheduler},
     println,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
+    tools::cpu_id,
 };
 
 use bootloader_api::config::{BootloaderConfig, Mapping};
@@ -102,6 +103,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             &mut memory_mapper,
         )
         .expect("Multiple prossessors failed to start");
+        LOCAL_APIC.set_timer_intial_count(10000, g);
     });
 
     #[cfg(test)]

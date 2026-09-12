@@ -16,6 +16,7 @@ use crate::{
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
+    serial_println,
     tools::cpu_id,
     variables::{
         SCHEDULER_TASK_COUNT_MAX, SCHEDULER_TASK_CYCLES_MAX, SCHEDULER_TASK_CYCLES_MIN,

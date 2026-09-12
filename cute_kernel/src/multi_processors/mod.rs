@@ -9,17 +9,21 @@ use alloc::vec;
 use crate::{
     DT,
     acpi::{
-        apic::APIC,
+        apic::{APIC, APICClockDivider, LOCAL_APIC},
         madt::{MADT, record::MADTRecord},
     },
-    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
+    halt_loop,
+    interrupts::{
+        call_kill,
+        interupt_gaurd::{BlockInterupts, InteruptGaurd},
+    },
     memory::{
         addresses::{Address, PhysAddr, VirtAddr},
         frames::PhysFrame,
         pageing::{MemoryMapper, MemoryMapperError, page_table::PageEntryOption},
     },
     println,
-    tables::gdt::SystemSegmentDiscriptor,
+    tables::{gdt::SystemSegmentDiscriptor, idt::InteruptDiscriptorIndex},
     tools::cpu_id,
 };
 
@@ -166,9 +170,19 @@ pub extern "C" fn ap_mode_startup() -> ! {
 
     println!("[CPU : {}] : UP", cpu_id());
 
-    loop {
-        spin_loop();
-    }
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        println!("[CPU: {} setting up APIC timer]", cpu_id());
+
+        LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
+        LOCAL_APIC.set_timer_interupt_vector(
+            InteruptDiscriptorIndex::TaskSwitch,
+            crate::acpi::apic::APICTimerMode::OneShot,
+            g,
+        );
+    });
+
+    //Kill the boot thread and start running scheduled tasks
+    call_kill()
 }
 
 unsafe extern "C" {
