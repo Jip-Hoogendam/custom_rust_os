@@ -27,6 +27,7 @@ pub mod serial;
 pub mod sync;
 pub mod tables;
 pub mod tasks;
+pub mod time;
 pub mod tools;
 pub mod variables;
 

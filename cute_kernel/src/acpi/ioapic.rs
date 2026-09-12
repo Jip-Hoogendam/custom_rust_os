@@ -1,5 +1,6 @@
 use core::{
     mem::MaybeUninit,
+    ops::Add,
     ptr::{read_volatile, write_volatile},
 };
 
@@ -31,6 +32,35 @@ pub enum IRQ {
 
 pub type IOApicId = u32;
 
+/// A struct to make the apic register type safe
+#[derive(Debug, Clone, Copy)]
+#[repr(transparent)]
+struct ApicRegister(u32);
+
+impl Add<u32> for ApicRegister {
+    type Output = Self;
+    fn add(self, rhs: u32) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl ApicRegister {
+    const IOREDBL_OFFSET: u32 = 0x10;
+
+    #[inline]
+    #[must_use]
+    pub const fn new(register: u32) -> Self {
+        Self(register)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn new_irq(register: u32) -> Self {
+        Self::new(register * 2 + Self::IOREDBL_OFFSET)
+    }
+}
+
+/// A interface to interact with the ioapic
 pub struct IoApic {
     global_system_interupt_base: u32,
     io_reg_sel: MaybeUninit<&'static mut u32>,
@@ -49,22 +79,25 @@ impl IoApic {
         }
     }
 
-    fn write_register(&mut self, register: u32, data: u32) {
+    #[inline]
+    fn write_register(&mut self, register: ApicRegister, data: u32) {
         unsafe {
-            write_volatile(&raw mut **self.io_reg_sel.assume_init_mut(), register);
+            write_volatile(&raw mut **self.io_reg_sel.assume_init_mut(), register.0);
             write_volatile(&raw mut **self.io_win.assume_init_mut(), data);
         }
     }
 
-    fn read_register(&mut self, register: u32) -> u32 {
+    #[inline]
+    #[must_use]
+    fn read_register(&mut self, register: ApicRegister) -> u32 {
         unsafe {
-            write_volatile(&raw mut **self.io_reg_sel.assume_init_mut(), register);
+            write_volatile(&raw mut **self.io_reg_sel.assume_init_mut(), register.0);
             read_volatile(&raw const **self.io_win.assume_init_mut())
         }
     }
 
     fn len(&mut self) -> u32 {
-        const VERSION_OFFSET: u32 = 0x1;
+        const VERSION_OFFSET: ApicRegister = ApicRegister::new(0x1);
         const LEN_BITS: usize = 16;
         (self.read_register(VERSION_OFFSET) >> LEN_BITS) + 1
     }
@@ -84,6 +117,23 @@ impl IoApic {
         irq as u32 - self.global_system_interupt_base < self.len()
     }
 
+    /// Returns the register that is used for this interupt. Returning nothing if this apic is not
+    /// responsable.
+    #[inline]
+    #[must_use]
+    fn register(&mut self, irq: IRQ) -> Option<ApicRegister> {
+        let irq_offset = irq as u32 - self.global_system_interupt_base;
+        if irq_offset < self.len() {
+            Some(ApicRegister::new_irq(irq_offset))
+        } else {
+            None
+        }
+    }
+
+    const DESTINATION_OFFSET: usize = 56;
+
+    /// # Panics
+    /// if the io apic is not responsable for this.
     #[inline]
     pub fn set_irq_physical(
         &mut self,
@@ -91,12 +141,8 @@ impl IoApic {
         vector: InteruptDiscriptorIndex,
         desitnation: ApicId,
     ) {
-        const IOREDBL_OFFSET: u32 = 0x10;
-        const DESTINATION_OFFSET: usize = 56;
-        debug_assert!(self.is_responsable(irq));
-
-        let data = vector as u64 | u64::from(desitnation) << DESTINATION_OFFSET;
-        let register = (irq as u32 - self.global_system_interupt_base) * 2 + IOREDBL_OFFSET;
+        let data = vector as u64 | u64::from(desitnation) << Self::DESTINATION_OFFSET;
+        let register = self.register(irq).unwrap();
         #[allow(clippy::cast_possible_truncation)]
         self.write_register(register, data as u32);
         self.write_register(register + 1, (data >> 32) as u32);
