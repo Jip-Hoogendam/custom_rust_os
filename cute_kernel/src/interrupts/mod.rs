@@ -1,7 +1,4 @@
-use core::{
-    arch::asm,
-    fmt::Display,
-};
+use core::{arch::asm, fmt::Display};
 
 use spin::MutexGuard;
 
@@ -99,6 +96,12 @@ pub fn load_interupts<T>(
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::Keyboard,
         InteruptDiscriptor::new_interupt(io::keyboard_interrupt_handler as *const (), selector),
+        interupt_gaurd,
+    );
+
+    dt.get_mut_idt().set_discriptor(
+        InteruptDiscriptorIndex::ClockTick,
+        InteruptDiscriptor::new_interupt(io::system_clock_tick as *const (), selector),
         interupt_gaurd,
     );
 }

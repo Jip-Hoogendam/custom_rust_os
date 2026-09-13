@@ -1,6 +1,7 @@
 use crate::{
     acpi::apic::LOCAL_APIC,
     interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
+    serial_println,
 };
 
 use super::InterruptStackFrame;
@@ -14,4 +15,12 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: Interrupt
 
     let interupt_gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
     LOCAL_APIC.end_iterupts(&interupt_gaurd);
+}
+
+pub extern "x86-interrupt" fn system_clock_tick(_stack_frame: InterruptStackFrame) {
+    unsafe {
+        crate::time::SYSTEM_CLOCK.tick();
+        let interupt_gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
+        LOCAL_APIC.end_iterupts(&interupt_gaurd);
+    }
 }

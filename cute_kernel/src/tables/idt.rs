@@ -275,6 +275,9 @@ pub enum InteruptDiscriptorIndex {
     /// Keyboard interupts
     Keyboard = 0x40,
 
+    ///Clock interupts
+    ClockTick = 0x55,
+
     /// This interupt is called when the APIC timer requests a task switch.
     TaskSwitch = 0x50,
     TaskKill = 0x51,

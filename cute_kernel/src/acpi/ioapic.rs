@@ -5,11 +5,13 @@ use core::{
 };
 
 use crate::{
-    acpi::apic::ApicId, memory::addresses::VirtAddr, sync::Mutex,
+    acpi::{apic::ApicId, madt::record::IOAPICInteruptSourceOveride},
+    memory::addresses::VirtAddr,
+    sync::Mutex,
     tables::idt::InteruptDiscriptorIndex,
 };
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum IRQ {
     PIT = 0,
@@ -28,6 +30,35 @@ pub enum IRQ {
     FPU = 13,
     ATA1 = 14,
     ATA2 = 15,
+}
+
+pub type GlobalSystemInterupt = u32;
+
+/// The config for a specific irq. Can be loaded via the mdat table
+#[derive(Clone, Copy)]
+pub struct IRQConfig {
+    global_system_interupt: GlobalSystemInterupt,
+    _flags: u16,
+}
+
+impl IRQConfig {
+    #[inline]
+    #[must_use]
+    pub const fn new(irq: IRQ) -> Self {
+        Self {
+            global_system_interupt: irq as u32,
+            _flags: 0,
+        }
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn from_overide(overide: &IOAPICInteruptSourceOveride) -> Self {
+        Self {
+            global_system_interupt: overide.global_system_interupt,
+            _flags: overide.flags,
+        }
+    }
 }
 
 pub type IOApicId = u32;
@@ -113,16 +144,16 @@ impl IoApic {
 
     #[inline]
     #[must_use]
-    pub fn is_responsable(&mut self, irq: IRQ) -> bool {
-        irq as u32 - self.global_system_interupt_base < self.len()
+    pub fn is_responsable(&mut self, irq: GlobalSystemInterupt) -> bool {
+        irq - self.global_system_interupt_base < self.len()
     }
 
     /// Returns the register that is used for this interupt. Returning nothing if this apic is not
     /// responsable.
     #[inline]
     #[must_use]
-    fn register(&mut self, irq: IRQ) -> Option<ApicRegister> {
-        let irq_offset = irq as u32 - self.global_system_interupt_base;
+    fn register(&mut self, irq: GlobalSystemInterupt) -> Option<ApicRegister> {
+        let irq_offset = irq - self.global_system_interupt_base;
         if irq_offset < self.len() {
             Some(ApicRegister::new_irq(irq_offset))
         } else {
@@ -137,12 +168,12 @@ impl IoApic {
     #[inline]
     pub fn set_irq_physical(
         &mut self,
-        irq: IRQ,
+        irq: IRQConfig,
         vector: InteruptDiscriptorIndex,
         desitnation: ApicId,
     ) {
         let data = vector as u64 | u64::from(desitnation) << Self::DESTINATION_OFFSET;
-        let register = self.register(irq).unwrap();
+        let register = self.register(irq.global_system_interupt).unwrap();
         #[allow(clippy::cast_possible_truncation)]
         self.write_register(register, data as u32);
         self.write_register(register + 1, (data >> 32) as u32);

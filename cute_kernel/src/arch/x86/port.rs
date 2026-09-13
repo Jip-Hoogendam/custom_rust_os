@@ -1,5 +1,7 @@
 use core::{arch::asm, marker::PhantomData};
 
+use crate::println;
+
 pub struct Port<T: Copy> {
     port: u16,
     data: PhantomData<T>,
@@ -9,8 +11,10 @@ impl<T: Copy> Port<T> {
     /// # Panics
     /// This function panics if the size of `T` is not a multiple of 2 or lower or equal to 4
     #[must_use]
-    pub fn new(port: u16) -> Self {
-        assert!(size_of::<T>() <= 4 && size_of::<T>().is_power_of_two());
+    pub const fn new(port: u16) -> Self {
+        const {
+            assert!(size_of::<T>() <= 4 && size_of::<T>().is_power_of_two());
+        }
         Self {
             port,
             data: PhantomData,

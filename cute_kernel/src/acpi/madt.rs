@@ -1,8 +1,12 @@
 /// A module to read the Multiple APIC Description Table.
 use crate::{
-    acpi::{ioapic::IoApic, sdt::ShortSDTHeader},
+    acpi::{
+        ioapic::{IRQ, IRQConfig, IoApic},
+        sdt::ShortSDTHeader,
+    },
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     memory::addresses::{PhysAddr, PhysMemOffset},
+    println,
     sync::MutexGuard,
 };
 
@@ -63,9 +67,22 @@ impl MADT {
         let pointer = unsafe { pointer.add(1) }.cast::<u8>();
         MADTRecordIterator { pointer, end }
     }
+
+    #[must_use]
+    pub fn get_irq_options(&self, irq: IRQ) -> IRQConfig {
+        for record in self.records() {
+            if let record::MADTRecord::IOAPICInteruptSourceOveride(overide) = record
+                && overide.irq_src == irq
+            {
+                return IRQConfig::from_overide(overide);
+            }
+        }
+        IRQConfig::new(irq)
+    }
 }
 
 pub mod record {
+    use crate::acpi::ioapic::{GlobalSystemInterupt, IRQ};
 
     /// The format of the mdat record header,
     #[repr(C, packed)]
@@ -127,8 +144,8 @@ pub mod record {
     pub struct IOAPICInteruptSourceOveride {
         pub record_length: u8,
         pub bus_src: u8,
-        pub irq_src: u8,
-        pub global_system_interupt: u32,
+        pub irq_src: IRQ,
+        pub global_system_interupt: GlobalSystemInterupt,
         pub flags: u16,
     }
 

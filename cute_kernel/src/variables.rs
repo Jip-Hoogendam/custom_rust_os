@@ -2,6 +2,11 @@
 // usage of magic vairables.
 // These should only contain variables that a res at compile time
 
+//---------------- GLOBAL SETTINGS
+
+/// System timer frequency
+pub const DESIRED_CLOCK_FREAKUENCY: usize = 15000; //hz
+
 ///The amount of segment discriptors the GDT will hold
 pub const GDT_TABLE_SIZE: usize = 32; //Discriptors
 
