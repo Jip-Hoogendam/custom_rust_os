@@ -22,6 +22,7 @@ use crate::{
         frames::PhysFrame,
         pageing::{MemoryMapper, MemoryMapperError, page_table::PageEntryOption},
     },
+    multi_tasking::executor::Executor,
     println,
     tables::{gdt::SystemSegmentDiscriptor, idt::InteruptDiscriptorIndex},
     tools::cpu_id,
@@ -171,7 +172,13 @@ pub extern "C" fn ap_mode_startup() -> ! {
     println!("[CPU : {}] : UP", cpu_id());
 
     InteruptGaurd::<BlockInterupts>::scope(|g| {
-        println!("[CPU: {} setting up APIC timer]", cpu_id());
+        println!(
+            "[CPU: {} setting up APIC {} timer]",
+            cpu_id(),
+            LOCAL_APIC.getid()
+        );
+
+        LOCAL_APIC.setup_local(g);
 
         LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
         LOCAL_APIC.set_timer_interupt_vector(
@@ -179,10 +186,13 @@ pub extern "C" fn ap_mode_startup() -> ! {
             crate::acpi::apic::APICTimerMode::OneShot,
             g,
         );
+
+        LOCAL_APIC.set_timer_intial_count(10000, g);
     });
 
-    //Kill the boot thread and start running scheduled tasks
-    call_kill()
+    println!("[CPU: {}]: creating and starting executor", cpu_id());
+    let mut executor = Executor::default();
+    executor.run();
 }
 
 unsafe extern "C" {

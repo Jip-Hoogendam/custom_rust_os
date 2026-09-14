@@ -307,16 +307,8 @@ impl APIC {
         self.ipi_msg(target, current | SIPI_COMMAND | (address >> 12));
     }
 
-    /// intilizes the APIC
-    /// This also disables the 8259 PIC properly just in case it was not disabled.
-    ///
-    /// # Safety
-    /// This function assumes that the APIC is pointing to a correct APIC registers. And this
-    /// requires the cpu to suport the Model specific register instructions.
-    pub unsafe fn init<T>(&self, addr: VirtAddr, _interupt_gaurd: &InteruptGaurd<T>)
-    where
-        T: InteruptController,
-    {
+    /// Setup the local apic without needing to setup the registers
+    pub fn setup_local<T: InteruptController>(&self, _interupt_gaurd: &InteruptGaurd<T>) {
         use crate::arch::port::Port;
         //Disable pics
         Port::new(PIC1_DATA).write(PIC_OFF);
@@ -335,14 +327,28 @@ impl APIC {
             );
         }
 
-        // sets the apic to the correct registers based off the pointer
-        self.set_registers(unsafe { addr.to_mut_ref() });
-
         // Enable apic by setting the SpuriousInteruptVector.
         self.registers_mut().write(
             APICRegister::SpuriousInteruptVector,
             self.registers().read(APICRegister::SpuriousInteruptVector) | 0x100,
         );
+    }
+
+    /// intilizes the APIC
+    /// This also disables the 8259 PIC properly just in case it was not disabled.
+    ///
+    /// # Safety
+    /// This function assumes that the APIC is pointing to a correct APIC registers. And this
+    /// requires the cpu to suport the Model specific register instructions.
+    pub unsafe fn init<T: InteruptController>(
+        &self,
+        addr: VirtAddr,
+        interupt_gaurd: &InteruptGaurd<T>,
+    ) {
+        // sets the apic to the correct registers based off the pointer
+        self.set_registers(unsafe { addr.to_mut_ref() });
+
+        self.setup_local(interupt_gaurd);
     }
 }
 

@@ -1,7 +1,5 @@
 use core::{arch::asm, marker::PhantomData};
 
-use crate::println;
-
 pub struct Port<T: Copy> {
     port: u16,
     data: PhantomData<T>,

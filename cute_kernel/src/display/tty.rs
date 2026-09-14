@@ -1,11 +1,8 @@
-use alloc::{fmt, format};
-use core::{cmp, fmt::Write};
+use alloc::fmt;
+use core::cmp;
 use noto_sans_mono_bitmap::{FontWeight, RasterHeight, get_raster, get_raster_width};
 
-use crate::{
-    display::frame_buffer::{BGRColor, FrameBufferWriter},
-    tools::cpu_id,
-};
+use crate::display::frame_buffer::{BGRColor, FrameBufferWriter};
 
 pub struct Font {
     /// The height of the font
@@ -180,9 +177,6 @@ where
                 let char_index = self.cursor_x / self.options.font.raster_width;
                 let tab_left = (char_index as isize) % self.options.tab_width as isize + 1;
                 self.shift_cursor(tab_left);
-            }
-            '`' => {
-                self.write_str(&format!("cpuid: {}", cpu_id())).unwrap();
             }
             '\u{8}' => {
                 self.shift_cursor(-1);

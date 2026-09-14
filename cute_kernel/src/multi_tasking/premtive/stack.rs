@@ -3,7 +3,7 @@ use core::mem::MaybeUninit;
 use alloc::boxed::Box;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Stack {
     inner: Option<Box<[MaybeUninit<usize>]>>,
 }

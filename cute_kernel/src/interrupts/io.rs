@@ -1,7 +1,6 @@
 use crate::{
     acpi::apic::LOCAL_APIC,
     interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
-    serial_println,
 };
 
 use super::InterruptStackFrame;

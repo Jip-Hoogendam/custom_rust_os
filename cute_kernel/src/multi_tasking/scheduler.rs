@@ -12,19 +12,20 @@ use crate::{
     interrupts::{
         call_kill, call_switch_task,
         interupt_gaurd::{
-            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController, InteruptGaurd,
+            self, BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
+            InteruptGaurd,
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
-    serial_println,
-    tools::cpu_id,
+    println, serial_println,
+    tools::{CPUId, cpu_id},
     variables::{
         SCHEDULER_TASK_COUNT_MAX, SCHEDULER_TASK_CYCLES_MAX, SCHEDULER_TASK_CYCLES_MIN,
         SCHEDULER_TASKS_SLOPE_FACTOR,
     },
 };
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ProcState {
     Resource(NonZeroUsize), //The thread is blocked and waiting on a resource.
     Running,                //A prosessor is currently running this task
@@ -32,9 +33,13 @@ pub enum ProcState {
     Sleep,                  //No processor is currently running this program
     Killed,                 //The thread was killed for whatever reason.
     Stopped,                //The thread is done running.
+    // A special "state" for the task. By loading one or more of these tasks types into the shceduler
+    // then the fallback will run like any other task. The state actual state of a fallback task is
+    // maintained by each cpu.
+    Fallback,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct TaskInfo {
     parent: Option<TaskId>,
     task: Thread,
@@ -45,9 +50,16 @@ pub static SCHEDULER: Scheduler = Scheduler::new();
 //Maintans what tasks need to be scheduled.
 static SCHEDULER_TABLE: spin::Mutex<BTreeMap<TaskId, TaskInfo>> = spin::Mutex::new(BTreeMap::new());
 
+//A struct to hold the current state of the proseesor and the fallback task
+//If the curr_task is none then it is currently running the fallback task.
+struct CPUInfo {
+    fallback: TaskInfo,
+    curr_task: Option<TaskId>,
+}
+
 pub struct Scheduler {
     /// Scheduler should only change its own prosess while interuts are blocked.
-    current_tasks: InteruptCell<MaybeUninit<Box<[Option<TaskId>]>>>,
+    current_tasks: InteruptCell<MaybeUninit<Box<[CPUInfo]>>>,
 }
 
 unsafe impl Send for Scheduler {}
@@ -70,21 +82,25 @@ impl Scheduler {
     #[inline]
     fn get_current_task<T: InteruptController>(
         &self,
-        cpu_index: u16,
+        cpu_index: CPUId,
         interupt_gaurd: &InteruptGaurd<T>,
     ) -> Option<TaskId> {
-        unsafe { self.current_tasks.get(interupt_gaurd).assume_init_ref()[cpu_index as usize] }
+        unsafe {
+            self.current_tasks.get(interupt_gaurd).assume_init_ref()[cpu_index as usize].curr_task
+        }
     }
 
+    //To set the current task to the fallback just run the fallback
     #[inline]
     fn set_current_task<T: InteruptController>(
         &self,
-        cpu_index: u16,
+        cpu_index: CPUId,
         task: Option<TaskId>,
         interupt_gaurd: &InteruptGaurd<T>,
     ) {
         unsafe {
-            self.current_tasks.get(interupt_gaurd).assume_init_mut()[cpu_index as usize] = task;
+            self.current_tasks.get(interupt_gaurd).assume_init_mut()[cpu_index as usize]
+                .curr_task = task;
         }
     }
 
@@ -94,32 +110,31 @@ impl Scheduler {
         processor_count: usize,
         interupt_gaurd: &InteruptGaurd<T>,
     ) {
+        let fallback = TaskInfo {
+            parent: None,
+            task: Thread::init_root(),
+            state: ProcState::Stopped,
+        };
+
         let mut tasks = Box::new_uninit_slice(processor_count);
         for task in &mut tasks {
-            task.write(None);
+            task.write(CPUInfo {
+                fallback: fallback.clone(),
+                curr_task: None,
+            });
         }
-        let tasks = unsafe {
-            transmute::<Box<[MaybeUninit<Option<TaskId>>]>, Box<[Option<TaskId>]>>(tasks)
-        };
+        let tasks = unsafe { transmute::<Box<[MaybeUninit<CPUInfo>]>, Box<[CPUInfo]>>(tasks) };
         unsafe { self.current_tasks.get(interupt_gaurd).write(tasks) };
 
-        let thread = Thread::init_root();
-        let mut task_table = SCHEDULER_TABLE.lock();
-        let id = TaskId::new();
-        task_table.insert(
-            id,
-            TaskInfo {
-                parent: None,
-                task: thread,
-                state: ProcState::Running,
-            },
-        );
-        self.set_current_task(cpu_id(), Some(id), interupt_gaurd);
+        let mut tasks = unsafe { self.current_tasks.get(interupt_gaurd) };
+        let cpu_state = unsafe { &mut tasks.assume_init_mut()[cpu_id() as usize] };
+        cpu_state.fallback.state = ProcState::Running;
     }
 
+    ///Schedulers a new task
     pub fn schedule<T>(
         &self,
-        cpu_index: u16,
+        cpu_index: CPUId,
         thread: Thread,
         interupt_gaurd: &InteruptGaurd<T>,
     ) -> TaskId
@@ -141,7 +156,8 @@ impl Scheduler {
         id
     }
 
-    pub fn await_resource<T>(&self, cpu_index: u16, resource: &T) {
+    ///Awaits on a resource
+    pub fn await_resource<T>(&self, cpu_index: CPUId, resource: &T) {
         {
             let interupt_gaurd = InteruptGaurd::<BlockInterupts>::block();
             let resource = NonZeroUsize::try_from(&raw const *resource as usize)
@@ -174,7 +190,8 @@ impl Scheduler {
         }
     }
 
-    pub fn kill_current_task(&self, cpu_index: u16) -> ! {
+    ///Kills the current tas
+    pub fn kill_current_task(&self, cpu_index: CPUId) -> ! {
         {
             let interupt_gaurd = InteruptGaurd::<BlockInterupts>::block();
             if let Some(task) = self.get_current_task(cpu_index, &interupt_gaurd) {
@@ -217,19 +234,17 @@ impl Scheduler {
         cpu_index: u16,
         curr_stack: *mut u8,
         interupt_gaurd: &InteruptGaurd<T>,
-    ) -> Option<NonZeroU64>
+    ) -> NonZeroU64
     where
         T: InteruptController,
     {
         let mut task_table = SCHEDULER_TABLE.lock();
-        if task_table.is_empty() {
-            return Some(unsafe { (curr_stack as u64).try_into().unwrap_unchecked() });
-        }
-
         let mut new_task = None;
-        let current_task = self.get_current_task(cpu_index, interupt_gaurd);
+        let mut tasks = unsafe { self.current_tasks.get(interupt_gaurd) };
+        let cpu_state = unsafe { &mut tasks.assume_init_mut()[cpu_index as usize] };
 
-        for (id, task_info) in current_task.map_or_else(
+        //Get the next task
+        for (id, task_info) in cpu_state.curr_task.map_or_else(
             || {
                 task_table
                     .range(..)
@@ -250,25 +265,43 @@ impl Scheduler {
         let task_count = task_table.len();
 
         if let Some(new_task) = new_task {
-            if let Some(task) = current_task
+            //Unsets the previous task
+            if let Some(task) = cpu_state.curr_task
                 && let Some(thread) = task_table.get_mut(&task)
             {
                 thread.task.rsp = curr_stack as u64;
                 thread.state = ProcState::Sleep;
+            } else if cpu_state.curr_task.is_none() {
+                cpu_state.fallback.task.rsp = curr_stack as u64;
+                cpu_state.fallback.state = ProcState::Sleep;
             }
+
+            //Load next task
             let task_info = unsafe { task_table.get_mut(&new_task).unwrap_unchecked() };
             task_info.state = ProcState::Running;
             self.set_current_task(cpu_index, Some(new_task), interupt_gaurd);
             let time = Self::compute_task_time(task_count, task_info);
             LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
-            Some(unsafe { task_info.task.rsp.try_into().unwrap_unchecked() })
-        } else if let Some(current_task) = current_task {
+            unsafe { task_info.task.rsp.try_into().unwrap_unchecked() }
+        } else if let Some(current_task) = cpu_state.curr_task {
+            //Load curent task
             let task_info = unsafe { task_table.get_mut(&current_task).unwrap_unchecked() };
             let time = Self::compute_task_time(task_count, task_info);
             LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
-            Some(unsafe { (curr_stack as u64).try_into().unwrap_unchecked() })
+            unsafe { (curr_stack as u64).try_into().unwrap_unchecked() }
         } else {
-            None
+            //Load fallback task
+            let time = Self::compute_task_time(task_count, &cpu_state.fallback);
+            LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
+            if cpu_state.fallback.state == ProcState::Running {
+                unsafe { (curr_stack as u64).try_into().unwrap_unchecked() }
+            } else if cpu_state.fallback.state == ProcState::Stopped {
+                cpu_state.fallback.state = ProcState::Running;
+                unsafe { (curr_stack as u64).try_into().unwrap_unchecked() }
+            } else {
+                cpu_state.fallback.state = ProcState::Running;
+                unsafe { (cpu_state.fallback.task.rsp).try_into().unwrap_unchecked() }
+            }
         }
     }
 }
@@ -276,12 +309,9 @@ impl Scheduler {
 //A simple custom scheduler for the task switch
 #[unsafe(no_mangle)]
 extern "C" fn schedule(stack: *mut u8) -> *mut u8 {
-    loop {
-        let gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
-        if let Some(next) = SCHEDULER.next(cpu_id(), stack, &gaurd) {
-            let next_stack: u64 = next.into();
-            LOCAL_APIC.end_iterupts(&gaurd);
-            break next_stack as *mut u8;
-        }
-    }
+    let gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
+    let next = SCHEDULER.next(cpu_id(), stack, &gaurd);
+    let next_stack: u64 = next.into();
+    LOCAL_APIC.end_iterupts(&gaurd);
+    next_stack as *mut u8
 }

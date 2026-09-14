@@ -7,6 +7,8 @@ use core::{
 use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use crossbeam_queue::ArrayQueue;
 
+use crate::{serial_println, tools::cpu_id};
+
 use super::{TaskId, cooprative::Task};
 
 pub struct Executor {

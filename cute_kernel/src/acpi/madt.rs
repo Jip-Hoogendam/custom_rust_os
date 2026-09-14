@@ -6,7 +6,6 @@ use crate::{
     },
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     memory::addresses::{PhysAddr, PhysMemOffset},
-    println,
     sync::MutexGuard,
 };
 

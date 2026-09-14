@@ -47,7 +47,7 @@ pub struct ThreadOptions {
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Thread {
     stack: Stack,
     pub rsp: u64,

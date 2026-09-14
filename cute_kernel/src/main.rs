@@ -20,7 +20,7 @@ use cute_kernel::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{addresses::PhysMemOffset, pageing::MemoryMapper},
     multi_processors::{init_proscessors, write_trampoline},
-    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
+    multi_tasking::{cooprative::Task, executor::Executor, premtive::spawn, scheduler},
     println,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
@@ -121,6 +121,10 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
     #[cfg(test)]
     test_main();
+
+    // spawn(|| {
+    //     println!("test !");
+    // });
 
     println!("Creating Async executor");
     let mut executor = Executor::default();
