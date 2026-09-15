@@ -5,7 +5,7 @@
 //---------------- GLOBAL SETTINGS
 
 /// System timer frequency
-pub const DESIRED_CLOCK_FREAKUENCY: usize = 15000; //hz
+pub const DESIRED_CLOCK_FREAKUENCY: usize = 1500; //hz
 
 ///The amount of segment discriptors the GDT will hold
 pub const GDT_TABLE_SIZE: usize = 32; //Discriptors
