@@ -3,6 +3,7 @@ use core::{
     mem::{MaybeUninit, transmute},
     num::{NonZeroU64, NonZeroUsize},
     ops::Bound,
+    time::Duration,
 };
 
 use alloc::{boxed::Box, collections::BTreeMap};
@@ -18,6 +19,7 @@ use crate::{
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
     println, serial_println,
+    time::Instant,
     tools::{CPUId, cpu_id},
     variables::{
         SCHEDULER_TASK_COUNT_MAX, SCHEDULER_TASK_CYCLES_MAX, SCHEDULER_TASK_CYCLES_MIN,
@@ -27,12 +29,15 @@ use crate::{
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ProcState {
-    Resource(NonZeroUsize), //The thread is blocked and waiting on a resource.
-    Running,                //A prosessor is currently running this task
-    Paused,                 //This program is paused for whatever reason
-    Sleep,                  //No processor is currently running this program
-    Killed,                 //The thread was killed for whatever reason.
-    Stopped,                //The thread is done running.
+    Resource {
+        resource: NonZeroUsize,
+        time: Instant,
+    }, //The thread is blocked and waiting on a resource.
+    Running,        //A prosessor is currently running this task
+    Paused,         //This program is paused for whatever reason
+    Sleep(Instant), //No processor is currently running this program
+    Killed,         //The thread was killed for whatever reason.
+    Stopped,        //The thread is done running.
     // A special "state" for the task. By loading one or more of these tasks types into the shceduler
     // then the fallback will run like any other task. The state actual state of a fallback task is
     // maintained by each cpu.
@@ -52,6 +57,7 @@ static SCHEDULER_TABLE: spin::Mutex<BTreeMap<TaskId, TaskInfo>> = spin::Mutex::n
 
 //A struct to hold the current state of the proseesor and the fallback task
 //If the curr_task is none then it is currently running the fallback task.
+#[derive(Debug)]
 struct CPUInfo {
     fallback: TaskInfo,
     curr_task: Option<TaskId>,
@@ -125,10 +131,6 @@ impl Scheduler {
         }
         let tasks = unsafe { transmute::<Box<[MaybeUninit<CPUInfo>]>, Box<[CPUInfo]>>(tasks) };
         unsafe { self.current_tasks.get(interupt_gaurd).write(tasks) };
-
-        let mut tasks = unsafe { self.current_tasks.get(interupt_gaurd) };
-        let cpu_state = unsafe { &mut tasks.assume_init_mut()[cpu_id() as usize] };
-        cpu_state.fallback.state = ProcState::Running;
     }
 
     ///Schedulers a new task
@@ -143,10 +145,11 @@ impl Scheduler {
     {
         let mut task_table = SCHEDULER_TABLE.lock();
         let id = TaskId::new();
+        let now = Instant::now();
         let task_info = TaskInfo {
             parent: self.get_current_task(cpu_index, interupt_gaurd),
             task: thread,
-            state: ProcState::Sleep,
+            state: ProcState::Sleep(now),
         };
         if task_table.len() <= 1 {
             let time = Self::compute_task_time(task_table.len(), &task_info);
@@ -165,7 +168,10 @@ impl Scheduler {
             if let Some(task) = self.get_current_task(cpu_index, &interupt_gaurd)
                 && let Some(task) = SCHEDULER_TABLE.lock().get_mut(&task)
             {
-                task.state = ProcState::Resource(resource);
+                task.state = ProcState::Resource {
+                    resource,
+                    time: Instant::now(),
+                };
             }
         }
         call_switch_task();
@@ -178,10 +184,13 @@ impl Scheduler {
             let resource = NonZeroUsize::try_from(&raw const *resource as usize)
                 .unwrap_or(unsafe { NonZeroUsize::new(1).unwrap_unchecked() });
             for task_info in SCHEDULER_TABLE.lock().values_mut() {
-                if let ProcState::Resource(blocked_resource) = task_info.state
+                if let ProcState::Resource {
+                    resource: blocked_resource,
+                    time,
+                } = task_info.state
                     && resource == blocked_resource
                 {
-                    task_info.state = ProcState::Sleep;
+                    task_info.state = ProcState::Sleep(time);
                     drop(interupt_gaurd);
                     call_switch_task();
                     return;
@@ -238,10 +247,20 @@ impl Scheduler {
     where
         T: InteruptController,
     {
+        let schedule_time = Instant::now();
         let mut task_table = SCHEDULER_TABLE.lock();
         let mut new_task = None;
         let mut tasks = unsafe { self.current_tasks.get(interupt_gaurd) };
         let cpu_state = unsafe { &mut tasks.assume_init_mut()[cpu_index as usize] };
+
+        let mut min_age = match cpu_state.fallback.state {
+            ProcState::Stopped => {
+                cpu_state.fallback.state = ProcState::Running;
+                Duration::ZERO
+            }
+            ProcState::Sleep(min_age) => min_age.elapsed(),
+            _ => Duration::from_millis(10),
+        };
 
         //Get the next task
         for (id, task_info) in cpu_state.curr_task.map_or_else(
@@ -256,9 +275,11 @@ impl Scheduler {
                     .chain(task_table.range((Bound::Unbounded, Bound::Excluded(task))))
             },
         ) {
-            if matches!(task_info.state, ProcState::Sleep) {
+            if let ProcState::Sleep(age) = task_info.state
+                && age.elapsed() > min_age
+            {
                 new_task = Some(*id);
-                break;
+                min_age = age.elapsed();
             }
         }
 
@@ -270,10 +291,10 @@ impl Scheduler {
                 && let Some(thread) = task_table.get_mut(&task)
             {
                 thread.task.rsp = curr_stack as u64;
-                thread.state = ProcState::Sleep;
+                thread.state = ProcState::Sleep(schedule_time);
             } else if cpu_state.curr_task.is_none() {
                 cpu_state.fallback.task.rsp = curr_stack as u64;
-                cpu_state.fallback.state = ProcState::Sleep;
+                cpu_state.fallback.state = ProcState::Sleep(schedule_time);
             }
 
             //Load next task
@@ -283,24 +304,25 @@ impl Scheduler {
             let time = Self::compute_task_time(task_count, task_info);
             LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
             unsafe { task_info.task.rsp.try_into().unwrap_unchecked() }
-        } else if let Some(current_task) = cpu_state.curr_task {
-            //Load curent task
-            let task_info = unsafe { task_table.get_mut(&current_task).unwrap_unchecked() };
-            let time = Self::compute_task_time(task_count, task_info);
-            LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
-            unsafe { (curr_stack as u64).try_into().unwrap_unchecked() }
         } else {
+            if let Some(id) = cpu_state.curr_task
+                && let Some(thread) = task_table.get_mut(&id)
+            {
+                thread.state = ProcState::Sleep(schedule_time);
+                thread.task.rsp = curr_stack as u64;
+                cpu_state.curr_task = None;
+            }
             //Load fallback task
             let time = Self::compute_task_time(task_count, &cpu_state.fallback);
             LOCAL_APIC.set_timer_intial_count(time, interupt_gaurd);
-            if cpu_state.fallback.state == ProcState::Running {
-                unsafe { (curr_stack as u64).try_into().unwrap_unchecked() }
-            } else if cpu_state.fallback.state == ProcState::Stopped {
-                cpu_state.fallback.state = ProcState::Running;
-                unsafe { (curr_stack as u64).try_into().unwrap_unchecked() }
-            } else {
-                cpu_state.fallback.state = ProcState::Running;
-                unsafe { (cpu_state.fallback.task.rsp).try_into().unwrap_unchecked() }
+            match cpu_state.fallback.state {
+                ProcState::Stopped | ProcState::Running => unsafe {
+                    (curr_stack as u64).try_into().unwrap_unchecked()
+                },
+                _ => {
+                    cpu_state.fallback.state = ProcState::Running;
+                    unsafe { (cpu_state.fallback.task.rsp).try_into().unwrap_unchecked() }
+                }
             }
         }
     }

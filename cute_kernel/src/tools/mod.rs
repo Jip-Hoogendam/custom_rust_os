@@ -1,4 +1,6 @@
-use core::arch::asm;
+use core::{arch::asm, time::Duration};
+
+use crate::time::Instant;
 
 pub type CPUId = u16;
 
@@ -19,4 +21,11 @@ pub fn cpu_id() -> CPUId {
         );
     }
     (id >> 24) as CPUId
+}
+
+pub fn sleep(duration: Duration) {
+    let start = Instant::now();
+    while start.elapsed() < duration {
+        crate::arch::instructions::hlt();
+    }
 }

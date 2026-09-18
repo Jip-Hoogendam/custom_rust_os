@@ -1,11 +1,20 @@
-use core::mem::MaybeUninit;
+use core::{fmt::Debug, mem::MaybeUninit};
 
 use alloc::boxed::Box;
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Stack {
     inner: Option<Box<[MaybeUninit<usize>]>>,
+}
+
+impl Debug for Stack {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match &self.inner {
+            Some(inner) => write!(f, "Stack{{Init: {{len:{}}}", inner.len()),
+            None => write!(f, "Stack{{ptr: Uninit}}"),
+        }
+    }
 }
 
 unsafe impl Send for Stack {}

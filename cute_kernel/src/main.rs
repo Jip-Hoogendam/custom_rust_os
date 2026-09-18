@@ -25,6 +25,7 @@ use cute_kernel::{
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
     time::{Instant, set_system_clock_source_8253pit},
+    tools::{cpu_id, sleep},
 };
 
 use bootloader_api::config::{BootloaderConfig, Mapping};
@@ -106,25 +107,22 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         println!("Initlilizing Scheduler");
         scheduler::SCHEDULER.init(4, g);
 
-        write_trampoline(&mut memory_mapper);
-
-        init_proscessors(
-            mdat,
-            &LOCAL_APIC,
-            boot_info.kernel_stack_bottom,
-            boot_info.kernel_stack_len,
-            &mut memory_mapper,
-        )
-        .expect("Multiple prossessors failed to start");
         LOCAL_APIC.set_timer_intial_count(10000, g);
     });
 
+    write_trampoline(&mut memory_mapper);
+
+    init_proscessors(
+        mdat,
+        &LOCAL_APIC,
+        boot_info.kernel_stack_bottom,
+        boot_info.kernel_stack_len,
+        &mut memory_mapper,
+    )
+    .expect("Multiple prossessors failed to start");
+
     #[cfg(test)]
     test_main();
-
-    // spawn(|| {
-    //     println!("test !");
-    // });
 
     println!("Creating Async executor");
     let mut executor = Executor::default();

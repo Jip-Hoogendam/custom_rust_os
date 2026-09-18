@@ -2,6 +2,7 @@ use core::{
     arch::{asm, global_asm},
     hint::spin_loop,
     ptr::copy_nonoverlapping,
+    time::Duration,
 };
 
 use alloc::vec;
@@ -12,11 +13,7 @@ use crate::{
         apic::{APIC, APICClockDivider, LOCAL_APIC},
         madt::{MADT, record::MADTRecord},
     },
-    halt_loop,
-    interrupts::{
-        call_kill,
-        interupt_gaurd::{BlockInterupts, InteruptGaurd},
-    },
+    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{
         addresses::{Address, PhysAddr, VirtAddr},
         frames::PhysFrame,
@@ -25,7 +22,7 @@ use crate::{
     multi_tasking::executor::Executor,
     println,
     tables::{gdt::SystemSegmentDiscriptor, idt::InteruptDiscriptorIndex},
-    tools::cpu_id,
+    tools::{cpu_id, sleep},
 };
 
 const PAE_MASK: u32 = 0b0110_0110_1000;
@@ -169,15 +166,7 @@ pub extern "C" fn ap_mode_startup() -> ! {
         task_state_segment.set_as_tss_register();
     }
 
-    println!("[CPU : {}] : UP", cpu_id());
-
     InteruptGaurd::<BlockInterupts>::scope(|g| {
-        println!(
-            "[CPU: {} setting up APIC {} timer]",
-            cpu_id(),
-            LOCAL_APIC.getid()
-        );
-
         LOCAL_APIC.setup_local(g);
 
         LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
@@ -190,7 +179,7 @@ pub extern "C" fn ap_mode_startup() -> ! {
         LOCAL_APIC.set_timer_intial_count(10000, g);
     });
 
-    println!("[CPU: {}]: creating and starting executor", cpu_id());
+    println!("[CPU : {}] : UP", cpu_id());
     let mut executor = Executor::default();
     executor.run();
 }
@@ -304,14 +293,14 @@ pub fn init_proscessors(
         local_apic.deassert(target);
         local_apic.await_delivery();
 
-        // I dont have delays yet ...
-        for _ in 0..10_0000 {}
+        sleep(Duration::from_millis(100));
 
         for _ in 0..2 {
             local_apic.clear_errors();
             local_apic.send_startup_ipi(target, TRAMPOLINE_ADDRESS);
             // I need to create a sleep function
-            for _ in 0..10000 {}
+            sleep(Duration::from_millis(10));
+
             local_apic.await_delivery();
         }
     }

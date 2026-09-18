@@ -1,7 +1,4 @@
-use crate::{
-    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
-    sync::Mutex,
-};
+use crate::sync::Mutex;
 use lazy_static::lazy_static;
 use uart_16550::SerialPort;
 
@@ -17,12 +14,10 @@ lazy_static! {
 pub fn serial_print_fn(args: ::core::fmt::Arguments) {
     use core::fmt::Write;
 
-    InteruptGaurd::<BlockInterupts>::scope(|_g| {
-        SERIAL1
-            .lock()
-            .write_fmt(args)
-            .expect("Printing to serial failed");
-    });
+    SERIAL1
+        .lock()
+        .write_fmt(args)
+        .expect("Printing to serial failed");
 }
 
 /// Prints to the host through the serial interface.

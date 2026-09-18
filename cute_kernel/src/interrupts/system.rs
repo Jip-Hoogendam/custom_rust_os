@@ -22,7 +22,7 @@ pub extern "C" fn task_switch() {
         push r14
         push r15
 
-        mov rdi, rsp
+       mov rdi, rsp
         call schedule
         mov rsp, rax
    

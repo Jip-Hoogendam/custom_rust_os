@@ -21,7 +21,7 @@ const MILLIS_PER_SEC: usize = 1_000;
 const MICROS_PER_SEC: u64 = 1_000_000;
 
 ///A time instant based on rust `std::time::Instant`
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Instant {
     nano_seconds: u32,
     seconds: u64,
