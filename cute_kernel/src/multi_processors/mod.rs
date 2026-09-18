@@ -1,6 +1,5 @@
 use core::{
     arch::{asm, global_asm},
-    hint::spin_loop,
     ptr::copy_nonoverlapping,
     time::Duration,
 };

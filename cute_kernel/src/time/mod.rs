@@ -7,18 +7,9 @@ use core::{
 
 pub use clock::{Clock, SYSTEM_CLOCK};
 
-use crate::{
-    arch::port::Port,
-    interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
-    println,
-    variables::DESIRED_CLOCK_FREAKUENCY,
-};
+use crate::{arch::port::Port, variables::DESIRED_CLOCK_FREAKUENCY};
 
 const NANOS_PER_SEC: u64 = 1_000_000_000;
-const NANOS_PER_MICROS: u64 = 1_000;
-const NANOS_PER_MILLIS: usize = 1_000_000;
-const MILLIS_PER_SEC: usize = 1_000;
-const MICROS_PER_SEC: u64 = 1_000_000;
 
 ///A time instant based on rust `std::time::Instant`
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -28,9 +19,11 @@ pub struct Instant {
 }
 
 impl AddAssign<Duration> for Instant {
+    #[allow(clippy::cast_possible_truncation)]
     fn add_assign(&mut self, rhs: Duration) {
         self.seconds += rhs.as_secs();
-        self.nano_seconds += rhs.as_nanos() as u32;
+
+        self.nano_seconds += (rhs.as_nanos() % u128::from(NANOS_PER_SEC)) as u32;
         #[allow(clippy::cast_possible_truncation)]
         if self.nano_seconds > NANOS_PER_SEC as u32 {
             self.nano_seconds %= NANOS_PER_SEC as u32;
@@ -43,7 +36,10 @@ impl Add<Duration> for Instant {
     type Output = Self;
     fn add(self, rhs: Duration) -> Self::Output {
         let mut seconds = self.seconds + rhs.as_secs();
-        let mut nano_seconds = self.nano_seconds + rhs.as_nanos() as u32;
+
+        #[allow(clippy::cast_possible_truncation)]
+        let mut nano_seconds =
+            self.nano_seconds + (rhs.as_nanos() % u128::from(NANOS_PER_SEC)) as u32;
         #[allow(clippy::cast_possible_truncation)]
         if nano_seconds > NANOS_PER_SEC as u32 {
             nano_seconds %= NANOS_PER_SEC as u32;
@@ -86,7 +82,7 @@ impl Instant {
             now.seconds.saturating_sub(self.seconds)
         };
 
-        Duration::from_nanos(nano_seconds as u64) + Duration::from_secs(seconds)
+        Duration::from_nanos(u64::from(nano_seconds)) + Duration::from_secs(seconds)
     }
 }
 

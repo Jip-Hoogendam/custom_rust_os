@@ -6,7 +6,6 @@
 
 extern crate alloc;
 
-use core::time::Duration;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
@@ -20,12 +19,11 @@ use cute_kernel::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{addresses::PhysMemOffset, pageing::MemoryMapper},
     multi_processors::{init_proscessors, write_trampoline},
-    multi_tasking::{cooprative::Task, executor::Executor, premtive::spawn, scheduler},
+    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
     println,
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
-    time::{Instant, set_system_clock_source_8253pit},
-    tools::{cpu_id, sleep},
+    time::set_system_clock_source_8253pit,
 };
 
 use bootloader_api::config::{BootloaderConfig, Mapping};

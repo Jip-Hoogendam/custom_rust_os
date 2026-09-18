@@ -13,12 +13,11 @@ use crate::{
     interrupts::{
         call_kill, call_switch_task,
         interupt_gaurd::{
-            self, BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
+            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
             InteruptGaurd,
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
-    println, serial_println,
     time::Instant,
     tools::{CPUId, cpu_id},
     variables::{

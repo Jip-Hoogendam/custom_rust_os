@@ -222,6 +222,7 @@ impl APIC {
     }
 
     #[inline]
+    #[allow(clippy::mut_from_ref)]
     fn registers_mut(&self) -> &mut APICRegisters {
         unsafe { (*self.registers.get()).assume_init_mut() }
     }
