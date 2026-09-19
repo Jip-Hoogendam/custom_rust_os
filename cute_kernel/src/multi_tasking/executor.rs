@@ -7,7 +7,6 @@ use core::{
 use alloc::{collections::BTreeMap, sync::Arc, task::Wake};
 use crossbeam_queue::ArrayQueue;
 
-
 use super::{TaskId, cooprative::Task};
 
 pub struct Executor {
@@ -89,7 +88,7 @@ impl Executor {
 
     fn sleep_if_idle(&self) {
         use crate::interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd};
-        InteruptGaurd::<BlockInterupts>::block_halt_if(|| self.task_queue.is_empty());
+        InteruptGaurd::<BlockInterupts>::block_halt_if(|_| self.task_queue.is_empty());
     }
 }
 

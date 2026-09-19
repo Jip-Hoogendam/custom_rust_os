@@ -1,6 +1,12 @@
+use core::time::Duration;
+
 use crate::{
-    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
-    multi_tasking::{TaskId, premtive::tcb::ThreadOptions, scheduler::SCHEDULER},
+    interrupts::interupt_gaurd::{self, BlockInterupts, InteruptGaurd},
+    multi_tasking::{
+        TaskId,
+        premtive::tcb::ThreadOptions,
+        scheduler::{SCHEDULER, Scheduler},
+    },
     tools::cpu_id,
     variables::KERNEL_THREAD_STACK_SIZE,
 };
@@ -32,12 +38,36 @@ pub struct ThreadHandle {
     id: TaskId,
 }
 
+impl ThreadHandle {
+    #[inline]
+    pub fn join(&self) {
+        InteruptGaurd::<BlockInterupts>::block_halt_while(|g| SCHEDULER.is_running(self.id, &g));
+    }
+}
+
+#[test_case]
+fn join_task() {
+    use crate::time::Instant;
+    const WAIT_TIME: Duration = Duration::from_secs(3);
+
+    let start = Instant::now();
+    spawn(|| {
+        use crate::tools::sleep;
+        use core::time::Duration;
+        sleep(Duration::from_secs(3));
+    })
+    .join();
+    if start.elapsed() < WAIT_TIME {
+        panic!("Did not properly join thread");
+    }
+}
+
 #[inline]
 fn schedule(entry: *const (), options: &ThreadOptions) -> ThreadHandle {
     let stack = stack::Stack::new(KERNEL_THREAD_STACK_SIZE);
     let tcb = Thread::spawn(stack, entry, options);
     let id = InteruptGaurd::<BlockInterupts>::scope(|interupt_gaurd| {
-        SCHEDULER.schedule(cpu_id(), tcb, interupt_gaurd)
+        SCHEDULER.schedule(tcb, interupt_gaurd)
     });
     ThreadHandle { id }
 }

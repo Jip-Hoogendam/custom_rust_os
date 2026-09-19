@@ -167,6 +167,8 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
+use crate::time::set_system_clock_source_8253pit;
+#[cfg(test)]
 #[cfg(test)]
 use crate::{
     acpi::{
@@ -263,6 +265,15 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
             InteruptDiscriptorIndex::TaskSwitch,
             acpi::apic::APICTimerMode::OneShot,
             g,
+        );
+
+        println!("Setting up system clock");
+        set_system_clock_source_8253pit();
+        let pit_opt = mdat.get_irq_options(crate::acpi::ioapic::IRQ::PIT);
+        IOAPIC.lock().set_irq_physical(
+            pit_opt,
+            InteruptDiscriptorIndex::ClockTick,
+            LOCAL_APIC.getid(),
         );
     });
 

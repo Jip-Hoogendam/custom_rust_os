@@ -77,13 +77,24 @@ impl<T: InteruptController> InteruptGaurd<T> {
         }
     }
 
+    pub fn block_halt_while<F>(condition: F)
+    where
+        F: Fn(InteruptGaurd<InteruptAlreadyBlocked>) -> bool,
+    {
+        T::block();
+        while condition(InteruptGaurd::<InteruptAlreadyBlocked>::block()) {
+            Self::unblock_hlt();
+            T::block();
+        }
+    }
+
     #[inline]
     pub fn block_halt_if<F>(condition: F)
     where
-        F: FnOnce() -> bool,
+        F: FnOnce(InteruptGaurd<InteruptAlreadyBlocked>) -> bool,
     {
         T::block();
-        if condition() {
+        if condition(InteruptGaurd::<InteruptAlreadyBlocked>::block()) {
             Self::unblock_hlt();
         } else {
             T::unblock();

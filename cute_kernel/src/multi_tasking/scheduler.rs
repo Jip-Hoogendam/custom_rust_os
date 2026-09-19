@@ -13,8 +13,7 @@ use crate::{
     interrupts::{
         call_kill, call_switch_task,
         interupt_gaurd::{
-            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController,
-            InteruptGaurd,
+            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController, InteruptGaurd,
         },
     },
     multi_tasking::{TaskId, premtive::tcb::Thread},
@@ -45,7 +44,6 @@ pub enum ProcState {
 
 #[derive(Debug, Clone)]
 struct TaskInfo {
-    parent: Option<TaskId>,
     task: Thread,
     state: ProcState,
 }
@@ -109,6 +107,20 @@ impl Scheduler {
         }
     }
 
+    pub fn is_running<T: InteruptController>(
+        &self,
+        task_id: TaskId,
+        _interupt_gaurd: &InteruptGaurd<T>,
+    ) -> bool {
+        if let Some(task) = SCHEDULER_TABLE.lock().get(&task_id)
+            && task.state != ProcState::Killed
+        {
+            true
+        } else {
+            false
+        }
+    }
+
     #[inline]
     pub fn init<T: InteruptController>(
         &self,
@@ -116,7 +128,6 @@ impl Scheduler {
         interupt_gaurd: &InteruptGaurd<T>,
     ) {
         let fallback = TaskInfo {
-            parent: None,
             task: Thread::init_root(),
             state: ProcState::Stopped,
         };
@@ -133,12 +144,7 @@ impl Scheduler {
     }
 
     ///Schedulers a new task
-    pub fn schedule<T>(
-        &self,
-        cpu_index: CPUId,
-        thread: Thread,
-        interupt_gaurd: &InteruptGaurd<T>,
-    ) -> TaskId
+    pub fn schedule<T>(&self, thread: Thread, interupt_gaurd: &InteruptGaurd<T>) -> TaskId
     where
         T: InteruptController,
     {
@@ -146,7 +152,6 @@ impl Scheduler {
         let id = TaskId::new();
         let now = Instant::now();
         let task_info = TaskInfo {
-            parent: self.get_current_task(cpu_index, interupt_gaurd),
             task: thread,
             state: ProcState::Sleep(now),
         };
