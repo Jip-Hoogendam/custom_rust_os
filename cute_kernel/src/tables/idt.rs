@@ -282,6 +282,9 @@ pub enum InteruptDiscriptorIndex {
     TaskSwitch = 0x50,
     TaskKill = 0x51,
     TaskWait = 0x52,
+
+    /// Call a system instruction
+    SysCall = 0x80,
 }
 
 #[derive(Debug)]

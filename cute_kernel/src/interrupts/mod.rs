@@ -1,9 +1,11 @@
-use core::{arch::asm, fmt::Display};
+use core::{arch::asm, fmt::Display, mem::transmute};
 
 use spin::MutexGuard;
 
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
+    multi_tasking::scheduler::SchedulerResult,
+    serial_println, syscall,
     tables::{
         DiscriptorTables,
         gdt::SegmentSelector,
@@ -11,17 +13,31 @@ use crate::{
     },
 };
 
-/// This holds the current stack frame of the interuptt
+///This is the structure of a normal interupt stack frame
+#[derive(Debug)]
 #[repr(C)]
 pub struct InterruptStackFrame {
     pub ip: usize,
     pub cs: usize,
     pub flags: usize,
     pub sp: usize,
+    pub rax: usize,
+}
+
+///This is the structure of a normal exeption stack frame
+#[derive(Debug)]
+#[repr(C)]
+pub struct ExceptionStackFrame {
+    pub ip: usize,
+    pub cs: usize,
+    pub flags: usize,
+    #[cfg(target_arch = "x86_64")]
+    pub sp: usize,
+    #[cfg(target_arch = "x86_64")]
     pub ss: usize,
 }
 
-impl Display for InterruptStackFrame {
+impl Display for ExceptionStackFrame {
     #![allow(clippy::cast_possible_truncation)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
@@ -104,17 +120,34 @@ pub fn load_interupts<T>(
         InteruptDiscriptor::new_interupt(io::system_clock_tick as *const (), selector),
         interupt_gaurd,
     );
+
+    dt.get_mut_idt().set_discriptor(
+        InteruptDiscriptorIndex::SysCall,
+        InteruptDiscriptor::new_interupt(syscall::syscall_handeler as *const (), selector),
+        interupt_gaurd,
+    );
 }
 
 #[inline]
-pub extern "C" fn call_kill() -> ! {
+pub fn call_kill() -> ! {
     unsafe {
         asm! {"int {x}", x = const(InteruptDiscriptorIndex::TaskKill as u8) ,options(nomem, nostack, noreturn) }
     }
 }
 
+//Returns weather the mutex was locked or not
 #[inline]
-pub extern "C" fn call_switch_task() {
+#[must_use]
+pub fn call_mutex_await() -> SchedulerResult {
+    let res: u64;
+    unsafe {
+        asm!("int {x}", x = const(InteruptDiscriptorIndex::TaskSwitch as u8) , out("rax") res, options(nomem, nostack));
+        transmute::<u64, SchedulerResult>(res)
+    }
+}
+
+#[inline]
+pub fn yield_thead() {
     unsafe {
         asm! {"int {x}", x = const(InteruptDiscriptorIndex::TaskSwitch as u8) ,options(nomem, nostack) }
     }

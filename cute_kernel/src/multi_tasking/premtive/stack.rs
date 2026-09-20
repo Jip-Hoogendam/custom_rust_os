@@ -11,7 +11,12 @@ pub struct Stack {
 impl Debug for Stack {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match &self.inner {
-            Some(inner) => write!(f, "Stack{{Init: {{len:{}}}", inner.len()),
+            Some(inner) => write!(
+                f,
+                "Stack{{Init: {{len:{}}}, Base : {:?}}}",
+                inner.len(),
+                inner.as_ptr()
+            ),
             None => write!(f, "Stack{{ptr: Uninit}}"),
         }
     }

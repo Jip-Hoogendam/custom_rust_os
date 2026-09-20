@@ -1,4 +1,4 @@
-use super::InterruptStackFrame;
+use super::ExceptionStackFrame;
 use crate::println;
 
 /// the task switch function that gets run on a timer interupt.
@@ -22,7 +22,7 @@ pub extern "C" fn task_switch() {
         push r14
         push r15
 
-       mov rdi, rsp
+        mov rdi, rsp
         call schedule
         mov rsp, rax
    
@@ -75,6 +75,6 @@ pub extern "C" fn task_kill() {
 }
 
 /// A breakpoint call for a program.
-pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn breakpoint_handler(stack_frame: ExceptionStackFrame) {
     println!("EXCEPTION: BREAKPOINT\n{}", stack_frame);
 }

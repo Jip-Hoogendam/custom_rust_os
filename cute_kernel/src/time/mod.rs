@@ -68,21 +68,26 @@ impl Instant {
     }
 
     #[must_use]
-    pub fn elapsed(&self) -> Duration {
-        let now = Self::now();
-
-        let (mut nano_seconds, overflow) = now.nano_seconds.overflowing_sub(self.nano_seconds);
+    pub fn since(&self, other: Instant) -> Duration {
+        let (mut nano_seconds, overflow) = other.nano_seconds.overflowing_sub(self.nano_seconds);
 
         #[allow(clippy::cast_possible_truncation)]
         let seconds = if overflow {
             nano_seconds =
                 NANOS_PER_SEC.saturating_sub_signed(i64::from(nano_seconds.cast_signed())) as u32;
-            now.seconds.saturating_sub(self.seconds + 1)
+            other.seconds.saturating_sub(self.seconds + 1)
         } else {
-            now.seconds.saturating_sub(self.seconds)
+            other.seconds.saturating_sub(self.seconds)
         };
 
         Duration::from_nanos(u64::from(nano_seconds)) + Duration::from_secs(seconds)
+    }
+
+    #[must_use]
+    pub fn elapsed(&self) -> Duration {
+        let now = Self::now();
+
+        self.since(now)
     }
 }
 

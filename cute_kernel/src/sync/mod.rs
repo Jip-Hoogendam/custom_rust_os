@@ -2,7 +2,9 @@ use core::{
     cell::UnsafeCell,
     error::Error,
     fmt::Display,
+    mem::transmute,
     ops::{Deref, DerefMut},
+    time::Duration,
 };
 
 /// The condition variable must always be a pointer to the exact heap allocated data.
@@ -10,12 +12,12 @@ use core::{
 #[repr(transparent)]
 pub struct ConditionVariable(usize);
 
-mod mutex;
+pub mod mutex;
 
 /// A system mutex.
 /// This mutex is based off the implemntation used by the `std::sync` in rust. found [here](https://doc.rust-lang.org/src/std/sync/poison/mutex.rs.html#227-231)
 pub struct Mutex<T: ?Sized> {
-    inner: mutex::Mutex,
+    inner: mutex::SysMutex,
     data: UnsafeCell<T>,
 }
 
@@ -28,15 +30,18 @@ impl<T: Default> Default for Mutex<T> {
 impl<T: Sized> Mutex<T> {
     pub const fn new(data: T) -> Self {
         Self {
-            inner: mutex::Mutex::new(),
+            inner: mutex::SysMutex::new(),
             data: UnsafeCell::new(data),
         }
     }
 }
 
 impl<T: ?Sized> Mutex<T> {
+    #[inline]
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        self.inner.lock();
+        //Turn self into static as we know that the system mutexes are static while used by the
+        //gaurd
+        unsafe { transmute::<&SysMutex, &'static SysMutex>(&self.inner) }.lock();
         MutexGuard::new(self)
     }
 
@@ -112,26 +117,46 @@ impl Display for TryLockResult {
 impl Error for TryLockResult {}
 
 #[cfg(test)]
-use crate::{multi_tasking, println};
+use crate::multi_tasking;
+use crate::{println, serial_println, sync::mutex::SysMutex, tools::sleep};
+#[cfg(test)]
+use alloc::vec;
 
 #[test_case]
 fn mutex_test() {
-    static TEST_MUTEX: Mutex<i32> = Mutex::new(0);
+    static TEST_MUTEX: Mutex<usize> = Mutex::new(0);
+    const THREAD_COUNT: usize = 3;
+    const THREAD_INC_AMOUNT: usize = 1000000;
 
-    for _i in 0..20 {
-        multi_tasking::premtive::spawn(|| {
-            for _ in 0..1000 {
-                let mut value = TEST_MUTEX.lock();
-                *value += 1;
-            }
-        });
+    let mut threads = vec![];
+    {
+        for i in 0..THREAD_COUNT {
+            threads.push(multi_tasking::premtive::spawn(move || {
+                for _ in 0..THREAD_INC_AMOUNT {
+                    let value = {
+                        let mut value = TEST_MUTEX.lock();
+                        *value += 1;
+                        *value
+                    };
+                }
+            }));
+        }
     }
 
+    // for thread in threads {
+    //     thread.join();
+    // }
+    serial_println!("Done !");
+
     loop {
-        let gaurd = TEST_MUTEX.lock();
-        if *gaurd == 20000 {
-            println!("Mutex works !");
-            break;
+        {
+            let gaurd = TEST_MUTEX.lock();
+            serial_println!("gaurd : {}", gaurd);
+            if *gaurd == THREAD_COUNT * THREAD_INC_AMOUNT {
+                break;
+            }
         }
+
+        sleep(Duration::from_secs(1));
     }
 }

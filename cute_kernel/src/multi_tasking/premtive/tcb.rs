@@ -1,7 +1,7 @@
 use core::{mem::MaybeUninit, ptr};
 
 use crate::{
-    interrupts::InterruptStackFrame,
+    interrupts::ExceptionStackFrame,
     multi_tasking::premtive::{stack::Stack, thread_exit},
     tables::gdt::SegmentSelector,
 };
@@ -26,7 +26,7 @@ struct RingZeroInteruptContext {
     rcx: usize,
     rax: usize,
 
-    interupt_stack: InterruptStackFrame,
+    interupt_stack: ExceptionStackFrame,
 
     unwind: usize, //unwind function
 }

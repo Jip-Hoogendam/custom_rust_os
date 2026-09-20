@@ -20,12 +20,12 @@ use cute_kernel::{
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{addresses::PhysMemOffset, pageing::MemoryMapper},
     multi_processors::{init_proscessors, write_trampoline},
-    multi_tasking::{cooprative::Task, executor::Executor, premtive::spawn, scheduler},
+    multi_tasking::{cooprative::Task, executor::Executor, scheduler},
     println,
+    syscall::{SysCalls, syscall},
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
     time::set_system_clock_source_8253pit,
-    tools::sleep,
 };
 
 use bootloader_api::config::{BootloaderConfig, Mapping};
@@ -77,6 +77,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     allocator::init_heap(&mut memory_mapper).expect("heap allocation failed");
 
     InteruptGaurd::<BlockInterupts>::scope(|g| {
+        println!("Initlilizing Scheduler");
+        scheduler::SCHEDULER.init(4, g);
+
         println!("Setting apic timer");
         mdat.init_apic(phys_mem_offset, &LOCAL_APIC, g);
         LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
@@ -86,29 +89,28 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
             g,
         );
 
-        println!("Setting up io apic");
-        mdat.init_io_apic(phys_mem_offset, IOAPIC.lock());
-        let keyboard_opt = mdat.get_irq_options(cute_kernel::acpi::ioapic::IRQ::Keyboard);
-        IOAPIC.lock().set_irq_physical(
-            keyboard_opt,
-            InteruptDiscriptorIndex::Keyboard,
-            LOCAL_APIC.getid(),
-        );
-
-        println!("Setting up system clock");
-        set_system_clock_source_8253pit();
-        let pit_opt = mdat.get_irq_options(cute_kernel::acpi::ioapic::IRQ::PIT);
-        IOAPIC.lock().set_irq_physical(
-            pit_opt,
-            InteruptDiscriptorIndex::ClockTick,
-            LOCAL_APIC.getid(),
-        );
-
-        println!("Initlilizing Scheduler");
-        scheduler::SCHEDULER.init(4, g);
-
         LOCAL_APIC.set_timer_intial_count(10000, g);
     });
+
+    println!("Setting up io apic");
+    mdat.init_io_apic(phys_mem_offset, IOAPIC.lock());
+    let keyboard_opt = mdat.get_irq_options(cute_kernel::acpi::ioapic::IRQ::Keyboard);
+    IOAPIC.lock().set_irq_physical(
+        keyboard_opt,
+        InteruptDiscriptorIndex::Keyboard,
+        LOCAL_APIC.getid(),
+    );
+
+    println!("Setting up system clock");
+    set_system_clock_source_8253pit();
+    let pit_opt = mdat.get_irq_options(cute_kernel::acpi::ioapic::IRQ::PIT);
+    IOAPIC.lock().set_irq_physical(
+        pit_opt,
+        InteruptDiscriptorIndex::ClockTick,
+        LOCAL_APIC.getid(),
+    );
+
+    syscall(SysCalls::MtxLock, 1234, 4321, 5678);
 
     write_trampoline(&mut memory_mapper);
 

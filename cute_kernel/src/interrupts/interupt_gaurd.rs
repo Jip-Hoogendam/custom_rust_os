@@ -5,6 +5,8 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
+use crate::serial_println;
+
 /// This struct is used to control the interupts. Works basicallly like a lock gaurd but then for
 /// interutps.
 pub trait InteruptController {
@@ -99,6 +101,17 @@ impl<T: InteruptController> InteruptGaurd<T> {
         } else {
             T::unblock();
         }
+    }
+
+    #[inline]
+    pub fn unlock_scope<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        T::unblock();
+        let res = f();
+        T::block();
+        res
     }
 
     #[inline]

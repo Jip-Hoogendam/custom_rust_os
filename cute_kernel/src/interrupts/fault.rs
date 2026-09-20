@@ -2,11 +2,11 @@ use core::arch::asm;
 
 use crate::{halt_loop, println};
 
-use super::InterruptStackFrame;
+use super::ExceptionStackFrame;
 
 /// Page faults get called when refrenceing a page that is not allowed to be acessed at this level.
 pub extern "x86-interrupt" fn page_fault_handeler(
-    stack_frame: InterruptStackFrame,
+    stack_frame: ExceptionStackFrame,
     error_code: u64,
 ) -> ! {
     let cr2: usize;
@@ -23,7 +23,7 @@ pub extern "x86-interrupt" fn page_fault_handeler(
 
 /// Double faults get called when a previus interupt can not be handeld.
 pub extern "x86-interrupt" fn double_fault_handler(
-    stack_frame: InterruptStackFrame,
+    stack_frame: ExceptionStackFrame,
     _error_code: u64,
 ) -> ! {
     panic!("EXCEPTION: DOUBLE FAULT\n{stack_frame}");

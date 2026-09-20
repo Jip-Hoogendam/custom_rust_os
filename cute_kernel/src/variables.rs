@@ -13,7 +13,7 @@ pub const GDT_TABLE_SIZE: usize = 32; //Discriptors
 ///The allocated size of the interupt stacks
 pub type InteruptStack = [u8; 4096 * 64];
 
-pub const KERNEL_THREAD_STACK_SIZE: usize = 1024 * 16; //Bytes
+pub const KERNEL_THREAD_STACK_SIZE: usize = 1024 * 8; //Bytes
 
 //---------------- SCHEDULER OPTIONS
 // The current scheduler schedules tasks in a simple logorithmic curve between the `TASK_CYCLES_MIN`

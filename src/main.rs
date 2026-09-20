@@ -29,7 +29,7 @@ fn main() {
 
     let mut cmd = Command::new("qemu-system-x86_64");
     // print serial output to the shell
-    cmd.arg("-serial").arg("mon:stdio");
+    cmd.arg("-serial").arg("stdio");
     // number of permitted cores
     cmd.arg("-smp").arg("4");
     // enable the guest to exit qemu

@@ -3,9 +3,9 @@ use crate::{
     interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
 };
 
-use super::InterruptStackFrame;
+use super::ExceptionStackFrame;
 /// Keyboard interupts should get called on each keyboard signal.
-pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: ExceptionStackFrame) {
     use crate::arch::port::Port;
 
     let port = Port::new(0x60);
@@ -16,7 +16,7 @@ pub extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: Interrupt
     LOCAL_APIC.end_iterupts(&interupt_gaurd);
 }
 
-pub extern "x86-interrupt" fn system_clock_tick(_stack_frame: InterruptStackFrame) {
+pub extern "x86-interrupt" fn system_clock_tick(_stack_frame: ExceptionStackFrame) {
     unsafe {
         crate::time::SYSTEM_CLOCK.tick();
         let interupt_gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();

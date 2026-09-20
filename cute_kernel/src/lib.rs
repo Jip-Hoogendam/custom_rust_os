@@ -25,6 +25,7 @@ pub mod multi_processors;
 pub mod multi_tasking;
 pub mod serial;
 pub mod sync;
+pub mod syscall;
 pub mod tables;
 pub mod tasks;
 pub mod time;
@@ -167,8 +168,6 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
 }
 
 #[cfg(test)]
-use crate::time::set_system_clock_source_8253pit;
-#[cfg(test)]
 #[cfg(test)]
 use crate::{
     acpi::{
@@ -191,7 +190,13 @@ use crate::{
     },
 };
 #[cfg(test)]
-use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point};
+use crate::{
+    memory::pageing::MemoryMapper,
+    multi_processors::{init_proscessors, write_trampoline},
+    time::set_system_clock_source_8253pit,
+};
+#[cfg(test)]
+use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point, info::Optional};
 
 /// This function is called on panic.
 #[cfg(not(feature = "qemu-test"))]
@@ -220,31 +225,23 @@ entry_point!(test_kernel_main, config = &BOOTLOADER_CONFIG);
 
 /// Entry point for `cargo test`
 #[cfg(test)]
-#[unsafe(no_mangle)]
 fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let phys_mem_offset = PhysMemOffset::get(boot_info);
-
-    //load SDT tables
     let sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
 
-    //Init frame buffer
     if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
         init_writer(framebuffer);
     }
-    InteruptGaurd::<BlockInterupts>::scope(|g| {
-        init(g);
-    });
 
-    use allocator;
+    println!("Hello World!");
+    if let Optional::Some(memory_offset) = boot_info.physical_memory_offset {
+        println!("Virtual memory start {:#x}", memory_offset);
+    }
 
-    let mut memory_mapper =
-        memory::pageing::MemoryMapper::init(&boot_info.memory_regions, phys_mem_offset)
-            .expect("Expect memory mapper to be made");
+    let mut memory_mapper = MemoryMapper::init(&boot_info.memory_regions, phys_mem_offset)
+        .expect("Expect memory mapper to be made");
 
-    //Init allocator
-    allocator::init_heap(&mut memory_mapper).expect("heap allocation failed");
-
-    //load MDAT tables
+    println!("Load MDAT");
     let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables
         .tables_iter(phys_mem_offset)
         .find(|x| matches!(x, SDTables::MADT(_)))
@@ -254,12 +251,18 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
         todo!("Load no multi prosessing or APICS");
     };
 
-    //Setup scheduler
     InteruptGaurd::<BlockInterupts>::scope(|g| {
-        scheduler::SCHEDULER.init(4, g);
-        mdat.init_apic(phys_mem_offset, &LOCAL_APIC, g);
-        mdat.init_io_apic(phys_mem_offset, IOAPIC.lock());
+        init(g);
+    });
 
+    println!("Init boot frame allocator");
+
+    println!("Init heap");
+    allocator::init_heap(&mut memory_mapper).expect("heap allocation failed");
+
+    InteruptGaurd::<BlockInterupts>::scope(|g| {
+        println!("Setting apic timer");
+        mdat.init_apic(phys_mem_offset, &LOCAL_APIC, g);
         LOCAL_APIC.set_timer_div(APICClockDivider::Div128, g);
         LOCAL_APIC.set_timer_interupt_vector(
             InteruptDiscriptorIndex::TaskSwitch,
@@ -267,15 +270,40 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
             g,
         );
 
-        println!("Setting up system clock");
-        set_system_clock_source_8253pit();
-        let pit_opt = mdat.get_irq_options(crate::acpi::ioapic::IRQ::PIT);
-        IOAPIC.lock().set_irq_physical(
-            pit_opt,
-            InteruptDiscriptorIndex::ClockTick,
-            LOCAL_APIC.getid(),
-        );
+        LOCAL_APIC.set_timer_intial_count(10000, g);
+
+        println!("Initlilizing Scheduler");
+        scheduler::SCHEDULER.init(4, g);
     });
+
+    println!("Setting up io apic");
+    mdat.init_io_apic(phys_mem_offset, IOAPIC.lock());
+    let keyboard_opt = mdat.get_irq_options(acpi::ioapic::IRQ::Keyboard);
+    IOAPIC.lock().set_irq_physical(
+        keyboard_opt,
+        InteruptDiscriptorIndex::Keyboard,
+        LOCAL_APIC.getid(),
+    );
+
+    println!("Setting up system clock");
+    set_system_clock_source_8253pit();
+    let pit_opt = mdat.get_irq_options(acpi::ioapic::IRQ::PIT);
+    IOAPIC.lock().set_irq_physical(
+        pit_opt,
+        InteruptDiscriptorIndex::ClockTick,
+        LOCAL_APIC.getid(),
+    );
+
+    write_trampoline(&mut memory_mapper);
+
+    init_proscessors(
+        mdat,
+        &LOCAL_APIC,
+        boot_info.kernel_stack_bottom,
+        boot_info.kernel_stack_len,
+        &mut memory_mapper,
+    )
+    .expect("Multiple prossessors failed to start");
 
     test_main();
     halt_loop();
