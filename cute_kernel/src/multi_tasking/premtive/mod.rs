@@ -1,6 +1,7 @@
 use core::time::Duration;
 
 use crate::{
+    arch::instructions::int3,
     interrupts::interupt_gaurd::{self, BlockInterupts, InteruptGaurd},
     multi_tasking::{
         TaskId,
@@ -55,11 +56,11 @@ fn join_task() {
     spawn(|| {
         use crate::tools::sleep;
         sleep(WAIT_TIME);
-    });
-    // .join();
-    // if start.elapsed() < WAIT_TIME {
-    //     panic!("Did not properly join thread");
-    // }
+    })
+    .join();
+    if start.elapsed() < WAIT_TIME {
+        panic!("Did not properly join thread");
+    }
 }
 
 #[inline]

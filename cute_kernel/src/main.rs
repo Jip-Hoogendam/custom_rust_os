@@ -110,8 +110,6 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         LOCAL_APIC.getid(),
     );
 
-    syscall(SysCalls::MtxLock, 1234, 4321, 5678);
-
     write_trampoline(&mut memory_mapper);
 
     init_proscessors(

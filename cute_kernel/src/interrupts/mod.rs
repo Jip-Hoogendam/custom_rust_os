@@ -123,7 +123,7 @@ pub fn load_interupts<T>(
 
     dt.get_mut_idt().set_discriptor(
         InteruptDiscriptorIndex::SysCall,
-        InteruptDiscriptor::new_interupt(syscall::syscall_handeler as *const (), selector),
+        InteruptDiscriptor::new_interupt(system::syscall_interupt as *const (), selector),
         interupt_gaurd,
     );
 }

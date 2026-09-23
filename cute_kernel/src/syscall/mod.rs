@@ -1,22 +1,48 @@
-use core::arch::asm;
+use core::{arch::asm, mem::transmute, time::Duration};
 
 use crate::{
-    interrupts::ExceptionStackFrame, serial_println, tables::idt::InteruptDiscriptorIndex,
+    acpi::apic::LOCAL_APIC,
+    arch::instructions::int3,
+    interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
+    multi_tasking::{
+        ScheduleStackCall,
+        scheduler::{SCHEDULER, SchedulerResult},
+    },
+    serial_println,
+    sync::mutex::SysMutex,
+    tables::idt::InteruptDiscriptorIndex,
+    tools::{cpu_id, sleep},
 };
 
-pub extern "C" fn syscall_handeler(
-    mut syscall: SysCalls,
-    mut var_1: usize,
-    mut var_2: usize,
-    mut var_3: usize,
-) {
-    serial_println!(
-        "Foo! : {:?}  var_1 : {} var_2 : {} var_3 : {}",
-        syscall,
-        var_1,
-        var_2,
-        var_3
-    );
+#[unsafe(no_mangle)]
+pub extern "C" fn syscall_handeler(stack: *mut ScheduleStackCall) -> *mut ScheduleStackCall {
+    let interupt_gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
+    LOCAL_APIC.set_timer_intial_count(0, &interupt_gaurd);
+    let call_num = unsafe { transmute::<u64, SysCalls>((&*stack).rdi) };
+
+    let resolved = false;
+
+    match call_num {
+        SysCalls::Read => todo!("Impl read"),
+        SysCalls::Open => todo!("create open file"),
+        SysCalls::Write => todo!("WriteFile"),
+        SysCalls::Close => todo!("Close file"),
+        SysCalls::MtxLock => SCHEDULER.await_resource(
+            cpu_id(),
+            unsafe {
+                ((&*stack).rsi as *const u8 as *mut SysMutex)
+                    .as_mut()
+                    .unwrap()
+            },
+            &interupt_gaurd,
+        ),
+    }
+
+    if resolved {
+        stack
+    } else {
+        SCHEDULER.next(stack, &interupt_gaurd)
+    }
 }
 
 #[derive(Debug)]
@@ -33,6 +59,7 @@ pub enum SysCalls {
 }
 
 #[inline]
+#[must_use]
 pub fn syscall(
     syscall: SysCalls,
     mut var_1: usize,
@@ -41,7 +68,7 @@ pub fn syscall(
 ) -> (usize, usize, usize, usize) {
     let mut syscall = syscall as usize;
     unsafe {
-        asm! {"int {x}", x = const(InteruptDiscriptorIndex::SysCall as u8), inout("edi") syscall, inout("esi") var_1, inout("edx") var_2, inout("ecx") var_3}
+        asm! {"int {x}", x = const(InteruptDiscriptorIndex::SysCall as u8), inout("rdi") syscall, inout("rsi") var_1, inout("rdx") var_2, inout("rcx") var_3}
     }
-    (syscall as usize, var_1, var_2, var_3)
+    (syscall, var_1, var_2, var_3)
 }

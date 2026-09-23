@@ -7,6 +7,8 @@ use core::{
     time::Duration,
 };
 
+use crate::{arch::instructions::int3, serial_println, sync::mutex::SysMutex, tools::sleep};
+
 /// The condition variable must always be a pointer to the exact heap allocated data.
 #[derive(PartialEq, Eq, Debug)]
 #[repr(transparent)]
@@ -42,6 +44,7 @@ impl<T: ?Sized> Mutex<T> {
         //Turn self into static as we know that the system mutexes are static while used by the
         //gaurd
         unsafe { transmute::<&SysMutex, &'static SysMutex>(&self.inner) }.lock();
+
         MutexGuard::new(self)
     }
 
@@ -118,18 +121,18 @@ impl Error for TryLockResult {}
 
 #[cfg(test)]
 use crate::multi_tasking;
-use crate::{println, serial_println, sync::mutex::SysMutex, tools::sleep};
 #[cfg(test)]
 use alloc::vec;
 
 #[test_case]
 fn mutex_test() {
     static TEST_MUTEX: Mutex<usize> = Mutex::new(0);
-    const THREAD_COUNT: usize = 3;
-    const THREAD_INC_AMOUNT: usize = 1000000;
+    const THREAD_COUNT: usize = 20;
+    const THREAD_INC_AMOUNT: usize = 1_000_000;
 
     let mut threads = vec![];
     {
+        let lock = TEST_MUTEX.lock();
         for i in 0..THREAD_COUNT {
             threads.push(multi_tasking::premtive::spawn(move || {
                 for _ in 0..THREAD_INC_AMOUNT {
@@ -141,22 +144,13 @@ fn mutex_test() {
                 }
             }));
         }
+        sleep(Duration::from_millis(1000));
     }
 
-    // for thread in threads {
-    //     thread.join();
-    // }
-    serial_println!("Done !");
-
-    loop {
-        {
-            let gaurd = TEST_MUTEX.lock();
-            serial_println!("gaurd : {}", gaurd);
-            if *gaurd == THREAD_COUNT * THREAD_INC_AMOUNT {
-                break;
-            }
-        }
-
-        sleep(Duration::from_secs(1));
+    for thread in threads {
+        thread.join();
     }
+
+    let gaurd = TEST_MUTEX.lock();
+    assert!(*gaurd == THREAD_COUNT * THREAD_INC_AMOUNT);
 }

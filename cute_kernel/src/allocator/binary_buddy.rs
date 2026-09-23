@@ -1,6 +1,6 @@
 use core::{alloc::GlobalAlloc, mem, ptr::null_mut};
 
-use crate::{allocator::Locked, memory::addresses::PhysMemOffset};
+use crate::{allocator::Locked, memory::addresses::PhysMemOffset, serial_println};
 
 #[global_allocator]
 pub static ALLOCATOR: Locked<BinaryBuddy> = Locked::new(BinaryBuddy::new());

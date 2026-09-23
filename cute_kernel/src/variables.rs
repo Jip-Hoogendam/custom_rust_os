@@ -5,7 +5,7 @@
 //---------------- GLOBAL SETTINGS
 
 /// System timer frequency
-pub const DESIRED_CLOCK_FREAKUENCY: usize = 1500; //hz
+pub const DESIRED_CLOCK_FREAKUENCY: usize = 150; //hz
 
 ///The amount of segment discriptors the GDT will hold
 pub const GDT_TABLE_SIZE: usize = 32; //Discriptors
@@ -13,7 +13,7 @@ pub const GDT_TABLE_SIZE: usize = 32; //Discriptors
 ///The allocated size of the interupt stacks
 pub type InteruptStack = [u8; 4096 * 64];
 
-pub const KERNEL_THREAD_STACK_SIZE: usize = 1024 * 8; //Bytes
+pub const KERNEL_THREAD_STACK_SIZE: usize = 1024 * 16; //Bytes
 
 //---------------- SCHEDULER OPTIONS
 // The current scheduler schedules tasks in a simple logorithmic curve between the `TASK_CYCLES_MIN`
