@@ -4,10 +4,9 @@ use core::{
     fmt::Display,
     mem::transmute,
     ops::{Deref, DerefMut},
-    time::Duration,
 };
 
-use crate::{arch::instructions::int3, serial_println, sync::mutex::SysMutex, tools::sleep};
+use crate::sync::mutex::SysMutex;
 
 /// The condition variable must always be a pointer to the exact heap allocated data.
 #[derive(PartialEq, Eq, Debug)]
@@ -120,9 +119,11 @@ impl Display for TryLockResult {
 impl Error for TryLockResult {}
 
 #[cfg(test)]
-use crate::multi_tasking;
+use crate::{multi_tasking, tools::sleep};
 #[cfg(test)]
 use alloc::vec;
+#[cfg(test)]
+use core::time::Duration;
 
 #[test_case]
 fn mutex_test() {

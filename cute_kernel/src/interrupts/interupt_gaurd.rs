@@ -5,7 +5,6 @@ use core::{
     ops::{Deref, DerefMut},
 };
 
-use crate::serial_println;
 
 /// This struct is used to control the interupts. Works basicallly like a lock gaurd but then for
 /// interutps.

@@ -6,7 +6,6 @@
 
 extern crate alloc;
 
-use core::time::Duration;
 
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
@@ -22,7 +21,6 @@ use cute_kernel::{
     multi_processors::{init_proscessors, write_trampoline},
     multi_tasking::{cooprative::Task, executor::Executor, scheduler},
     println,
-    syscall::{SysCalls, syscall},
     tables::idt::InteruptDiscriptorIndex,
     tasks::keyboard,
     time::set_system_clock_source_8253pit,

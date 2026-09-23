@@ -1,5 +1,5 @@
 use super::ExceptionStackFrame;
-use crate::{println, serial_println};
+use crate::println;
 
 /// the task switch function that gets run on a timer interupt.
 #[unsafe(naked)]

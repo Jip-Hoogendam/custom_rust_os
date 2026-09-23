@@ -1,21 +1,23 @@
-use core::{arch::asm, mem::transmute, time::Duration};
+use core::{arch::asm, mem::transmute};
 
 use crate::{
     acpi::apic::LOCAL_APIC,
-    arch::instructions::int3,
     interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
-    multi_tasking::{
-        ScheduleStackCall,
-        scheduler::{SCHEDULER, SchedulerResult},
-    },
-    serial_println,
+    multi_tasking::{ScheduleStackCall, scheduler::SCHEDULER},
     sync::mutex::SysMutex,
     tables::idt::InteruptDiscriptorIndex,
-    tools::{cpu_id, sleep},
+    tools::cpu_id,
 };
 
+/// This function handles system calles.
+///
+/// # Panics
+/// If any variables are passed incorrectly
+///
+/// # Safety
+/// The caller must garuntee that the stack points to a valid `ScheduleStackCall`
 #[unsafe(no_mangle)]
-pub extern "C" fn syscall_handeler(stack: *mut ScheduleStackCall) -> *mut ScheduleStackCall {
+pub unsafe extern "C" fn syscall_handeler(stack: *mut ScheduleStackCall) -> *mut ScheduleStackCall {
     let interupt_gaurd = InteruptGaurd::<InteruptAlreadyBlocked>::block();
     LOCAL_APIC.set_timer_intial_count(0, &interupt_gaurd);
     let call_num = unsafe { transmute::<u64, SysCalls>((&*stack).rdi) };

@@ -68,7 +68,7 @@ impl Instant {
     }
 
     #[must_use]
-    pub fn since(&self, other: Instant) -> Duration {
+    pub fn since(&self, other: Self) -> Duration {
         let (mut nano_seconds, overflow) = other.nano_seconds.overflowing_sub(self.nano_seconds);
 
         #[allow(clippy::cast_possible_truncation)]

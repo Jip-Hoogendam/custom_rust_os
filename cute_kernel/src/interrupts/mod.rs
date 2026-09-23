@@ -5,7 +5,6 @@ use spin::MutexGuard;
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     multi_tasking::scheduler::SchedulerResult,
-    serial_println, syscall,
     tables::{
         DiscriptorTables,
         gdt::SegmentSelector,

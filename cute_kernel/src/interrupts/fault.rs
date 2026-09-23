@@ -1,10 +1,8 @@
 use core::arch::asm;
 
 use crate::{
-    halt_loop,
     interrupts::interupt_gaurd::{InteruptAlreadyBlocked, InteruptGaurd},
     multi_tasking::scheduler::SCHEDULER,
-    println,
     tools::cpu_id,
 };
 

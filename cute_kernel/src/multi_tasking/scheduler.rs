@@ -1,7 +1,6 @@
 use core::{
     cmp::min,
     mem::{MaybeUninit, transmute},
-    sync::atomic::AtomicBool,
     time::Duration,
 };
 
@@ -10,19 +9,14 @@ use spin::MutexGuard;
 
 use crate::{
     acpi::apic::LOCAL_APIC,
-    arch::instructions::int3,
-    halt_loop,
     interrupts::{
-        call_kill, call_mutex_await,
+        call_kill,
         interupt_gaurd::{
-            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptCellGaurd,
-            InteruptController, InteruptGaurd,
+            BlockInterupts, InteruptAlreadyBlocked, InteruptCell, InteruptController, InteruptGaurd,
         },
     },
     multi_tasking::{ScheduleStackCall, TaskId, premtive::tcb::Thread},
-    println, serial_print, serial_println,
     sync::mutex::SysMutex,
-    tasks,
     time::Instant,
     tools::{CPUId, cpu_id},
     variables::{
@@ -158,6 +152,9 @@ impl Scheduler {
     }
 
     ///Awaits on a resource
+    ///
+    ///# Panics
+    ///if the scheduler is not initilized.
     pub fn await_resource<T: InteruptController>(
         &self,
         cpu_index: CPUId,
@@ -221,7 +218,6 @@ impl Scheduler {
 
     ///Saves the state of the current task and returns the old task id
     fn save_state(
-        &self,
         curr_stack: *mut ScheduleStackCall,
         task_table: &mut MutexGuard<'_, BTreeMap<TaskId, TaskInfo>>,
         cpu_info: &mut CPUInfo,
@@ -255,7 +251,6 @@ impl Scheduler {
 
     #[inline]
     fn load_task<T: InteruptController>(
-        &self,
         task_count: usize,
         task: &mut TaskInfo,
         interupt_gaurd: &InteruptGaurd<T>,
@@ -311,7 +306,7 @@ impl Scheduler {
         };
 
         let cpu_state = &mut tasks[cpu_index as usize];
-        let old_task = self.save_state(curr_stack, &mut task_table, cpu_state);
+        let _old_task = Self::save_state(curr_stack, &mut task_table, cpu_state);
 
         let mut held_lock: Option<&SysMutex> = None;
 
@@ -354,10 +349,10 @@ impl Scheduler {
             && let Some(task_info) = task_table.get_mut(&new_task)
         {
             //Load next task
-            self.load_task(task_count, task_info, interupt_gaurd, held_lock)
+            Self::load_task(task_count, task_info, interupt_gaurd, held_lock)
         } else {
             //Load fallback task
-            self.load_task(
+            Self::load_task(
                 task_count,
                 &mut cpu_state.fallback,
                 interupt_gaurd,

@@ -1,14 +1,6 @@
-use core::time::Duration;
-
 use crate::{
-    arch::instructions::int3,
-    interrupts::interupt_gaurd::{self, BlockInterupts, InteruptGaurd},
-    multi_tasking::{
-        TaskId,
-        premtive::tcb::ThreadOptions,
-        scheduler::{SCHEDULER, Scheduler},
-    },
-    serial_println,
+    interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
+    multi_tasking::{TaskId, premtive::tcb::ThreadOptions, scheduler::SCHEDULER},
     tools::cpu_id,
     variables::KERNEL_THREAD_STACK_SIZE,
 };
@@ -46,6 +38,9 @@ impl ThreadHandle {
         InteruptGaurd::<BlockInterupts>::block_halt_while(|g| SCHEDULER.is_running(self.id, &g));
     }
 }
+
+#[cfg(test)]
+use core::time::Duration;
 
 #[test_case]
 fn join_task() {
