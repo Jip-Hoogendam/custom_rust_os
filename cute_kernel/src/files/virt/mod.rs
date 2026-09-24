@@ -11,6 +11,7 @@ pub struct VirtNode {
 }
 
 impl VirtNode {
+    #[must_use]
     pub fn new(name: &str, inode: Inode) -> Self {
         Self {
             name: name.to_string(),

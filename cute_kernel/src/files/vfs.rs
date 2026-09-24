@@ -1,15 +1,18 @@
-use crate::{
-    files::{
-        path::{self, Path},
+use crate::files::{
+        path::Path,
         traits::{directory::Directory, file::File},
         virt::directory::VirutalDirectory,
-    },
-    println, serial_print, serial_println,
-};
+    };
 
 ///The internal virtual file system to support the mouting of drives and alot of other things
 pub struct VirtualFileSystem {
     root: VirutalDirectory,
+}
+
+impl Default for VirtualFileSystem {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VirtualFileSystem {
@@ -38,9 +41,8 @@ impl VirtualFileSystem {
         if let Some(seek_name) = path_parts.next()
             && !seek_name.is_empty()
         {
-            self.root
-                .find_node(seek_name, path_parts)
-                .map(|node| node.as_mut().get_inode().create_directory(dir_name));
+            if let Some(node) = self.root
+                .find_node(seek_name, path_parts) { node.as_mut().get_inode().create_directory(dir_name) }
         } else {
             self.root.create_directory(dir_name);
         }
@@ -54,14 +56,14 @@ impl VirtualFileSystem {
         if let Some(seek_name) = path_parts.next()
             && !seek_name.is_empty()
         {
-            self.root
-                .find_node(seek_name, path_parts)
-                .map(|node| node.as_mut().get_inode().create_file(file_name));
+            if let Some(node) = self.root
+                .find_node(seek_name, path_parts) { node.as_mut().get_inode().create_file(file_name) }
         } else {
             self.root.create_file(file_name);
         }
     }
 
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             root: VirutalDirectory::new(),

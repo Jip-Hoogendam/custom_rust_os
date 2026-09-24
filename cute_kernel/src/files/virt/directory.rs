@@ -1,18 +1,22 @@
 use alloc::{boxed::Box, vec, vec::Vec};
 
-use crate::{
-    files::{
+use crate::files::{
         traits::{FSNode, Inode, directory::Directory},
         virt::{VirtNode, file::VirtualFile},
-    },
-    serial_println,
-};
+    };
 
 pub struct VirutalDirectory {
     files: Vec<Box<dyn FSNode>>,
 }
 
+impl Default for VirutalDirectory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VirutalDirectory {
+    #[must_use]
     pub const fn new() -> Self {
         Self { files: vec![] }
     }

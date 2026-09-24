@@ -8,8 +8,15 @@ pub struct VirtualFile {
     contents: Mutex<Vec<u8>>,
 }
 
+impl Default for VirtualFile {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VirtualFile {
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             contents: Mutex::new(vec![]),
         }
