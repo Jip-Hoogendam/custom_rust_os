@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-
+use alloc::{boxed::Box, string::String};
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
     acpi::{
@@ -16,6 +16,7 @@ use cute_kernel::{
         load_sd_table,
     },
     display::init_writer,
+    files::{path::Path, vfs::VirtualFileSystem},
     interrupts::interupt_gaurd::{BlockInterupts, InteruptGaurd},
     memory::{addresses::PhysMemOffset, pageing::MemoryMapper},
     multi_processors::{init_proscessors, write_trampoline},
@@ -118,6 +119,18 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
         &mut memory_mapper,
     )
     .expect("Multiple prossessors failed to start");
+
+    let mut vfs = VirtualFileSystem::new();
+
+    vfs.create_directory(&Path::from("/"), "tmp");
+    vfs.create_file(&Path::from("/tmp"), "hello_world");
+    vfs.create_file(&Path::from("/tmp"), "other_file!");
+    let file = vfs.open(&Path::from("/tmp/hello_world")).unwrap();
+    let block = Box::new(b"This sample text!".as_slice());
+    file.write(block.as_ref(), 0);
+    let mut new = unsafe { Box::new_zeroed_slice(100).assume_init() };
+    file.read(new.as_mut(), 0);
+    println!("File contents : {:?}", String::from_utf8(new.to_vec()));
 
     #[cfg(test)]
     test_main();

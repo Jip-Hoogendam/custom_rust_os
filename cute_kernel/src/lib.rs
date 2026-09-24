@@ -18,6 +18,7 @@ pub mod acpi;
 pub mod allocator;
 pub mod arch;
 pub mod display;
+pub mod files;
 pub mod interrupts;
 pub mod memory;
 pub mod msr;
