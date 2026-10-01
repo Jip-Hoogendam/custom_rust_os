@@ -183,6 +183,13 @@ impl VirtAddr {
         PhysAddr::new(self.0 - offset.0.0)
     }
 
+    ///Converts the ref into a virtual pointer
+    #[must_use]
+    #[inline]
+    pub fn from_ref<T: ?Sized>(data: &T) -> Self {
+        Self(core::ptr::from_ref(data).cast::<()>() as usize)
+    }
+
     #[inline]
     #[must_use]
     pub const fn to_ptr<T>(&self) -> *const T {

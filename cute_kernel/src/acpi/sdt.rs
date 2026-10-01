@@ -205,15 +205,15 @@ impl SDTHeader {
 }
 
 /// A handly iterator to loop over the SDT records.
-pub struct SDTIter<'a> {
+pub struct SDTIter<'a, 'b> {
     offset: PhysMemOffset,
-    sdt: SDT<'a>,
+    sdt: &'b mut SDT<'a>,
     index: usize,
     table: &'a [u8],
 }
 
 /// A iterator of System discriptor tables.
-impl<'a> Iterator for SDTIter<'a> {
+impl<'a, 'b> Iterator for SDTIter<'a, 'b> {
     type Item = &'a SDTables;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -262,7 +262,7 @@ pub struct SDT<'a> {
 
 impl<'a> SDT<'a> {
     #[must_use]
-    pub const fn tables_iter(self, offset: PhysMemOffset) -> SDTIter<'a> {
+    pub const fn tables_iter<'b>(&'b mut self, offset: PhysMemOffset) -> SDTIter<'a, 'b> {
         let length = self.header.length as usize - size_of::<SDTHeader>();
         let pointer = core::ptr::from_ref::<SDTHeader>(self.header);
         let pointer = unsafe { pointer.add(1) }.cast::<u8>();

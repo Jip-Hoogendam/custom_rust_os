@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String};
+use alloc::{boxed::Box, string::String, vec::Vec};
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
     acpi::{
@@ -40,7 +40,7 @@ entry_point!(kernel_main, config = &BOOTLOADER_CONFIG);
 
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let phys_mem_offset = PhysMemOffset::get(boot_info);
-    let sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
+    let mut sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
 
     if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
         init_writer(framebuffer);
@@ -53,6 +53,13 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
 
     let mut memory_mapper = MemoryMapper::init(&boot_info.memory_regions, phys_mem_offset)
         .expect("Expect memory mapper to be made");
+
+    sd_tables
+        .tables_iter(phys_mem_offset)
+        .map(|x| {
+            println!("record: {:?}", x);
+        })
+        .count();
 
     println!("Load MDAT");
     let mdat = if let Some(SDTables::MADT(mdat)) = sd_tables

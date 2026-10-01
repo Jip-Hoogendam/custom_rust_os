@@ -17,6 +17,7 @@ extern crate alloc;
 pub mod acpi;
 pub mod allocator;
 pub mod arch;
+pub mod collections;
 pub mod display;
 pub mod files;
 pub mod interrupts;
@@ -228,7 +229,7 @@ entry_point!(test_kernel_main, config = &BOOTLOADER_CONFIG);
 #[cfg(test)]
 fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let phys_mem_offset = PhysMemOffset::get(boot_info);
-    let sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
+    let mut sd_tables = unsafe { load_sd_table(boot_info, phys_mem_offset) }.unwrap();
 
     if let bootloader_api::info::Optional::Some(framebuffer) = &mut boot_info.framebuffer {
         init_writer(framebuffer);

@@ -1,13 +1,16 @@
+pub mod aml;
 pub mod apic;
+pub mod dtst;
 pub mod ioapic;
 pub mod madt;
 pub mod sdt;
+
 use bootloader_api::BootInfo;
 use madt::MADT;
 use sdt::{SDP, SDT, SDTHeader};
 
 use crate::{
-    acpi::sdt::ShortSDTHeader,
+    acpi::{dtst::DSDT, sdt::ShortSDTHeader},
     memory::addresses::{Address, PhysAddr, PhysMemOffset, VirtAddr},
 };
 
@@ -24,7 +27,7 @@ pub enum SDTables {
     ///
     /// Holds data about the displayed image during boot.
     BGRT(ShortSDTHeader) = u32::from_le_bytes(*b"BGRT"),
-    DTST(ShortSDTHeader) = u32::from_le_bytes(*b"DTST"),
+    DSDT(DSDT) = u32::from_le_bytes(*b"DSDT"),
     FADT(ShortSDTHeader) = u32::from_le_bytes(*b"FACP"),
     /// #Root System Discriptor table.
     ///
