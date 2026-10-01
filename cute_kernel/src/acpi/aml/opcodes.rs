@@ -1,3 +1,12 @@
+use core::mem::transmute;
+
+#[derive(Debug, Clone, Copy)]
+pub enum AnyAmlOp {
+    AmlOp(AmlOp),
+    Ext(ExtOp),
+}
+
+use crate::acpi::aml::AmlError;
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[non_exhaustive]
@@ -87,29 +96,80 @@ pub enum AmlOp {
     WhileOp = 0xA2,
     BreakPointOp = 0xCC,
 
+    DigitChar,
+    NameChar = b'_',
+
     OnesOp = 0xFF,
 }
 
+impl TryFrom<u8> for AmlOp {
+    type Error = AmlError;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            b'0'..=b'9' => Ok(Self::DigitChar),
+            b'A'..=b'Z' => Ok(Self::NameChar),
+            0x2..=0x05
+            | 0x07
+            | 0x09
+            | 0x0F
+            | 0x16..=0x2D
+            | 0x30..=0x5A
+            | 0x5D
+            | 0x6F
+            | 0x9A..=0x9B
+            | 0xA6..=0xCB
+            | 0xCD..=0xFE => Err(AmlError::InvalidOperand(value)),
+            _ => Ok(unsafe { transmute::<u8, Self>(value) }),
+        }
+    }
+}
+
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExtOp {
-    //StatementOpcode
+    MutexOp = 0x01,
+    EventOp = 0x02,
+
+    CondRefOfOp = 0x12,
+    CreateFieldOp = 0x13,
+
+    LoadTableOp = 0x1F,
+    LoadOp = 0x20,
     StallOp = 0x21,
     SleepOp = 0x22,
+    AquireOp = 0x23,
     SignalOp = 0x24,
+    WaitOp = 0x25,
     ResetOp = 0x26,
     ReleaseOp = 0x27,
-    FatalOp = 0x32,
-    DebugOp = 0x31,
-
-    //ExpressionOpcode
-    AquireOp = 0x23,
-    CondRefOfOp = 0x12,
-    LoadTableOp = 0x1F,
     FromBCDOp = 0x28,
     ToBCDOp = 0x29,
-    TimeOp = 0x33,
-    WaitOp = 0x25,
+    UnloadOp = 0x2A,
 
+    RevisionOp = 0x30,
+    DebugOp = 0x31,
+    FatalOp = 0x32,
+    TimeOp = 0x33,
+
+    OpRegionOp = 0x80,
+    FieldOp = 0x81,
     DeviceOpList = 0x82,
+    ProcessorOp = 0x83,
+    PowerResOp = 0x84,
+    ThermalZoneOpList = 0x85,
+    IndexFieldOp = 0x86,
+    BankFieldOp = 0x87,
+    DataRegionOp = 0x88,
+}
+
+impl TryFrom<u8> for ExtOp {
+    type Error = AmlError;
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x03..=0x11 | 0x14..=0x1E | 0x2B..=0x2F | 0x34..=0x7F | 0x88.. => {
+                Err(AmlError::InvalidExtOperand(value))
+            }
+            _ => Ok(unsafe { transmute::<u8, Self>(value) }),
+        }
+    }
 }

@@ -12,6 +12,14 @@ impl TypedArenaAllocation {
     pub fn from_raw_usize(value: usize) -> Option<Self> {
         Some(Self(Some(NonZeroUsize::try_from(value).ok()?)))
     }
+
+    pub fn usize(&self) -> usize {
+        if let Some(index) = self.0 {
+            index.into()
+        } else {
+            0
+        }
+    }
 }
 
 ///A simple arena allocator that dynamically grows. This expects another global allocator to already

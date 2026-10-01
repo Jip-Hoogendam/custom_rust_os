@@ -1,17 +1,21 @@
 use core::fmt::Display;
 
-use alloc::{boxed::Box, vec};
+use alloc::{boxed::Box, format, string::String, vec};
 
 use crate::acpi::aml::{
-    AmlError, ByteCodeInstruction, ByteCodeObject,
-    data_objects::AmlString,
+    AmlError, ByteCodeInstruction,
     executor::{AmlVM, ArgObj, Buffer, LocalObj, ObjRef},
-    namenode::AmlData,
-    opcodes::{AmlOp, ExtOp},
+    opcodes::AmlOp,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NameSeg([u8; 4]);
+
+impl NameSeg {
+    pub fn root() -> Self {
+        Self([0, 0, 0, 0])
+    }
+}
 
 impl Display for NameSeg {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -54,6 +58,26 @@ pub enum NamePath {
     NullName,
 }
 
+impl Display for NamePath {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::NullName => String::from("[NULL_NAME]"),
+                Self::NameSeg(seg) => format!("./{}", seg),
+                Self::DualNamePath(seg_1, seg_2) => format!("./{}/{}", seg_1, seg_2),
+                Self::MultiNamePath(segs) => format!(
+                    ".{}",
+                    segs.iter()
+                        .map(|seg| format!("/{}", seg))
+                        .collect::<String>()
+                ),
+            }
+        )
+    }
+}
+
 impl NamePath {
     pub fn iter(&self) -> NamePathIter {
         NamePathIter {
@@ -65,14 +89,14 @@ impl NamePath {
 
 impl ByteCodeInstruction for NamePath {
     fn exec(ctx: &mut AmlVM) -> Result<Self, AmlError> {
-        let byte = ctx.peek()?;
+        let byte = ctx.peek_opcode()?;
         Ok(match byte {
-            b'A'..=b'Z' | b'_' => Self::NameSeg(NameSeg::exec(ctx)?),
-            0x2E => {
+            AmlOp::NameChar => Self::NameSeg(NameSeg::exec(ctx)?),
+            AmlOp::DualNameOp => {
                 ctx.next();
                 Self::DualNamePath(NameSeg::exec(ctx)?, NameSeg::exec(ctx)?)
             }
-            0x2F => {
+            AmlOp::MultiplyOp => {
                 ctx.next();
                 let seg_count = ctx.next()?;
                 let mut name_segs = vec![];
@@ -81,11 +105,11 @@ impl ByteCodeInstruction for NamePath {
                 }
                 Self::MultiNamePath(name_segs.into_boxed_slice())
             }
-            0x00 => {
+            AmlOp::ZeroOp => {
                 ctx.next();
                 Self::NullName
             }
-            _ => Err(AmlError::InvalidData(byte))?,
+            op => Err(AmlError::UnexpectedOp(op, "NamePath"))?,
         })
     }
 }

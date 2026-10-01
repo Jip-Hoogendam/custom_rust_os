@@ -21,7 +21,9 @@ fn basic_test() {
     let boxed = Box::new(*include_bytes!("./compiled/basic.aml"));
     let data = into_dstd(boxed.as_slice()).unwrap();
     let mut runner = data.create_amlvm();
-    runner.exec().unwrap();
+    if let Err(e) = runner.exec() {
+        panic!("{e}");
+    }
 }
 
 #[test_case]
@@ -29,5 +31,7 @@ fn basic_rtc_test() {
     let boxed = Box::new(*include_bytes!("./compiled/test_rtc.aml"));
     let data = into_dstd(boxed.as_slice()).unwrap();
     let mut runner = data.create_amlvm();
-    runner.exec().unwrap();
+    if let Err(e) = runner.exec() {
+        panic!("{e}");
+    }
 }

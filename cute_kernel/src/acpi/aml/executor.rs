@@ -1,5 +1,5 @@
-use alloc::{boxed::Box, vec};
-use core::{fmt::Display, mem::transmute, time::Duration};
+use alloc::{boxed::Box, string::String, vec};
+use core::{error::Error, fmt::Display, mem::transmute, time::Duration};
 
 use crate::{
     acpi::aml::{
@@ -7,10 +7,11 @@ use crate::{
         data_objects::{AmlString, DataObj, Package, load_byte, load_dword, load_qword, load_word},
         named_objects::{NamePath, NameSeg, NameString},
         namenode::{AmlData, NameNode},
-        opcodes::{AmlOp, ExtOp},
+        opcodes::{AmlOp, AnyAmlOp, ExtOp},
     },
     collections::typed_arena::{TypedArena, TypedArenaAllocation},
     println, serial_println,
+    tables::gdt::SegmentSelector,
     time::Instant,
 };
 
@@ -50,31 +51,6 @@ impl ByteStream {
         }
     }
 
-    ///Auto converts the next byte into a bytecode
-    pub fn next_opcode(&mut self) -> Option<AmlOp> {
-        Some(unsafe { transmute::<u8, AmlOp>(self.next()?) })
-    }
-
-    pub fn next_ext_opcode(&mut self) -> Option<ExtOp> {
-        Some(unsafe { transmute::<u8, ExtOp>(self.next()?) })
-    }
-
-    pub fn peek_ext_opcode(&mut self) -> Option<ExtOp> {
-        if self.index < self.length {
-            Some(unsafe { transmute::<u8, ExtOp>(*self.bytes.add(self.index)) })
-        } else {
-            None
-        }
-    }
-
-    pub fn peek_opcode(&mut self) -> Option<AmlOp> {
-        if self.index < self.length {
-            Some(unsafe { transmute::<u8, AmlOp>(*self.bytes.add(self.index)) })
-        } else {
-            None
-        }
-    }
-
     pub const fn peek(&mut self) -> Option<u8> {
         if self.index < self.length {
             Some(unsafe { *self.bytes.add(self.index) })
@@ -104,8 +80,8 @@ pub struct ArgObj(u8);
 impl ByteCodeInstruction for ArgObj {
     fn exec(stream: &mut AmlVM) -> Result<Self, AmlError> {
         let op = stream.next()?;
-        let index = if matches!(op, 0x68..=0x6E) {
-            op - 0x68
+        let index = if matches!(op, b'h'..=b'n') {
+            op - b'h'
         } else {
             Err(AmlError::InvalidData(op))?
         };
@@ -119,8 +95,8 @@ pub struct LocalObj(u8);
 impl ByteCodeInstruction for LocalObj {
     fn exec(stream: &mut AmlVM) -> Result<Self, AmlError> {
         let op = stream.next()?;
-        let index = if matches!(op, 0x60..=0x67) {
-            op - 0x60
+        let index = if matches!(op, b'`'..=b'g') {
+            op - b'`'
         } else {
             Err(AmlError::InvalidData(op))?
         };
@@ -140,15 +116,17 @@ pub enum NameRes {
 
 #[derive(Debug)]
 pub struct AmlStackFrame {
-    error: AmlError,
-    index: usize,
+    pub error: AmlError,
+    pub index: usize,
 }
+
+impl Error for AmlStackFrame {}
 
 impl Display for AmlStackFrame {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "Aml excutor failed : \nAt index : {}\nerror: {:?}",
+            "[AML EXEC ERROR]\nInstruction : {}\nbacktrace:\n{}",
             self.index, self.error
         )
     }
@@ -156,7 +134,7 @@ impl Display for AmlStackFrame {
 
 pub struct AmlVM {
     stream: ByteStream,
-    top_level_node: Option<ObjRef>,
+    top_level_node: ObjRef,
     heap: TypedArena<NameNode>,
     args: [AmlData; 7],
     local: [AmlData; 8],
@@ -164,10 +142,13 @@ pub struct AmlVM {
 
 impl AmlVM {
     pub fn new(start_point: *const u8, length: usize) -> Self {
+        let mut heap = TypedArena::new();
+        let root_obj = NameNode::new(NameSeg::root(), AmlData::Null);
+        let top_level_node = heap.instert(root_obj);
         Self {
             stream: ByteStream::new(start_point, length),
-            heap: TypedArena::new(),
-            top_level_node: None,
+            heap,
+            top_level_node,
             args: [
                 AmlData::default(),
                 AmlData::default(),
@@ -195,7 +176,7 @@ impl AmlVM {
         loop {
             match self.exect_op() {
                 Ok(_) => (),
-                Err(AmlError::EndOfStream) => return Ok(()),
+                Err(AmlError::TermEnd) => return Ok(()),
                 Err(err) => {
                     return Err(AmlStackFrame {
                         error: err,
@@ -221,26 +202,26 @@ impl AmlVM {
     #[inline]
     #[must_use]
     pub fn peek_opcode(&mut self) -> Result<AmlOp, AmlError> {
-        self.stream().peek_opcode().ok_or(AmlError::EndOfStream)
+        AmlOp::try_from(self.stream().peek().ok_or(AmlError::EndOfStream)?)
     }
 
     #[inline]
     #[must_use]
     pub fn peek_ext_opcode(&mut self) -> Result<ExtOp, AmlError> {
-        self.stream().peek_ext_opcode().ok_or(AmlError::EndOfStream)
+        ExtOp::try_from(self.stream().peek().ok_or(AmlError::EndOfStream)?)
     }
 
     ///Auto converts the next byte into a bytecode
     #[inline]
     #[must_use]
     pub fn next_opcode(&mut self) -> Result<AmlOp, AmlError> {
-        self.stream().next_opcode().ok_or(AmlError::EndOfStream)
+        AmlOp::try_from(self.stream().next().ok_or(AmlError::EndOfStream)?)
     }
 
     #[inline]
     #[must_use]
     pub fn next_ext_opcode(&mut self) -> Result<ExtOp, AmlError> {
-        self.stream().next_ext_opcode().ok_or(AmlError::EndOfStream)
+        ExtOp::try_from(self.stream().next().ok_or(AmlError::EndOfStream)?)
     }
 
     #[inline]
@@ -277,18 +258,18 @@ impl AmlVM {
     }
 
     /// Gets a obj refrence to current top level node from the context
-    pub fn get_tlr(&self) -> Result<ObjRef, AmlError> {
-        self.top_level_node.ok_or(AmlError::NoTopLevelNode)
+    pub fn get_tlr(&self) -> ObjRef {
+        self.top_level_node
     }
 
     ///Gets the current top level node
     pub fn get_tln(&self) -> Result<&NameNode, AmlError> {
-        self.get_node(self.get_tlr()?)
+        self.get_node(self.get_tlr())
     }
 
     ///Gets a mutable refrence to the top level node
     pub fn get_tln_mut(&mut self) -> Result<&mut NameNode, AmlError> {
-        self.mut_node(self.get_tlr()?)
+        self.mut_node(self.get_tlr())
     }
 
     pub fn resolve_path(&mut self) -> Result<NameRes, AmlError> {
@@ -309,7 +290,7 @@ impl AmlVM {
             AmlOp::MultiNameOp => {
                 self.next();
                 let seg_count = self.next()?;
-                let mut node = self.get_tlr()?;
+                let mut node = self.get_tlr();
                 for _ in 0..seg_count {
                     let name = NameSeg::exec(self)?;
                     node = self.get_node(node)?.find_child(self, &name)?;
@@ -320,7 +301,7 @@ impl AmlVM {
                 let name = NameSeg::exec(self)?;
                 Ok(NameRes::Ref(self.get_tln()?.find_child(self, &name)?))
             }
-            _ => Err(AmlError::InvalidOperand(opcode)),
+            op => Err(AmlError::UnexpectedOp(op, "NamePath")),
         }
     }
 
@@ -361,7 +342,7 @@ impl AmlVM {
                 if op == ExtOp::DebugOp {
                     Ok(NameRes::Debug)
                 } else {
-                    Err(AmlError::InvalidExtOperand(op))
+                    Err(AmlError::UnexpectedExtOp(op, "SuperName"))
                 }
             }
             AmlOp::RefOfOp => {
@@ -370,7 +351,7 @@ impl AmlVM {
                     ObjRef::from_raw_usize(raw_ref as usize).ok_or(AmlError::NullRef)?,
                 ))
             }
-            _ => Err(AmlError::InvalidOperand(op)),
+            op => Err(AmlError::UnexpectedOp(op, "SuperName")),
         }
     }
 
@@ -404,18 +385,15 @@ impl AmlVM {
 
     fn push_node(&mut self, name: NameString, data: AmlData) -> Result<ObjRef, AmlError> {
         // if no top level node set it to this node instead
-        if self.top_level_node.is_none() {
-            if let NameString::Rel(NamePath::NameSeg(name), 0) = name {
-                let obj_ref = self.heap.instert(NameNode::new(name, data));
-                self.top_level_node = Some(obj_ref);
-                return Ok(obj_ref);
-            }
-            Err(AmlError::NoTopLevelNode)?;
+        if let NameString::Rel(NamePath::NameSeg(name), 0) = name {
+            let obj_ref = self.heap.instert(NameNode::new(name, data));
+            self.top_level_node = obj_ref;
+            return Ok(obj_ref);
         }
 
         let (path, node) = match name {
             NameString::Rel(path, parents) => {
-                let mut node = self.get_tlr()?;
+                let mut node = self.get_tlr();
                 for _ in 0..parents {
                     if let Some(parent_ref) = self.get_node(node)?.parent {
                         node = parent_ref;
@@ -426,7 +404,7 @@ impl AmlVM {
                 (path, node)
             }
             NameString::Root(path) => {
-                let mut node = self.get_tlr()?;
+                let mut node = self.get_tlr();
                 while let Some(parent_ref) = self.get_node(node)?.parent {
                     node = parent_ref;
                 }
@@ -434,7 +412,7 @@ impl AmlVM {
             }
         };
 
-        let (name, node) = match path {
+        let (name, node) = match &path {
             NamePath::NullName => Err(AmlError::NullObj)?,
             NamePath::NameSeg(name) => (name, node),
             NamePath::DualNamePath(in_name, name) => {
@@ -443,15 +421,17 @@ impl AmlVM {
             }
             NamePath::MultiNamePath(names) => {
                 let mut node = node;
-                let (name, path) = names.split_last().ok_or(AmlError::OutOfIndex)?;
+                let (name, path) = names
+                    .split_last()
+                    .ok_or(AmlError::NamedObjectNotFound(path.clone()))?;
                 for name in path {
                     node = self.get_node(node)?.find_child(self, name)?;
                 }
-                (name.clone(), node)
+                (name, node)
             }
         };
 
-        self.append_to_node(node, NameNode::new(name, data))
+        self.append_to_node(node, NameNode::new(name.clone(), data))
     }
 
     /// Appends a child to a parent node making sure that the parent gets set correctly
@@ -510,7 +490,7 @@ impl AmlVM {
         //save values
         core::mem::swap(&mut self.stream, &mut stream);
         let curr_tln = self.top_level_node;
-        self.top_level_node = Some(obj_ref);
+        self.top_level_node = obj_ref;
 
         if let Err(err) = self.exec() {
             let tld = self.get_node(obj_ref)?;
@@ -536,13 +516,13 @@ impl AmlVM {
         match op {
             AmlOp::PackageOp => Ok(AmlData::Package(Package::load(self)?)),
             AmlOp::ExtOpPrefix => {
-                let ext_op = self.next_ext_opcode()?;
-                match ext_op {
+                let op = self.next_ext_opcode()?;
+                match op {
                     ExtOp::ReleaseOp => Ok(AmlData::Byte(load_byte(self)?)),
-                    _ => Err(AmlError::InvalidExtOperand(ext_op)),
+                    op => Err(AmlError::UnexpectedExtOp(op, "TermArg")),
                 }
             }
-            _ => Err(AmlError::InvalidOperand(op)),
+            op => Err(AmlError::UnexpectedOp(op, "TermArg")),
         }
     }
 
@@ -561,7 +541,7 @@ impl AmlVM {
                 self.next()?;
                 Ok(AmlData::Byte(load_byte(self)?))
             }
-            _ => Err(AmlError::InvalidOperand(op)),
+            op => Err(AmlError::UnexpectedOp(op, "ComputationalData")),
         }
     }
 
@@ -578,7 +558,11 @@ impl AmlVM {
     }
 
     pub fn exect_op(&mut self) -> Result<(), AmlError> {
-        let op = self.next_opcode()?;
+        let op = match self.next_opcode() {
+            Ok(op) => op,
+            Err(AmlError::EndOfStream) => Err(AmlError::TermEnd)?,
+            Err(e) => Err(e)?,
+        };
         match op {
             AmlOp::ScopeOp => {
                 let start = self.stream.index();
@@ -616,10 +600,10 @@ impl AmlVM {
                         self.exec_within(device, start, length as usize)?;
                     }
 
-                    op => Err(AmlError::InvalidExtOperand(op))?,
+                    op => Err(AmlError::UnexpectedExtOp(op, "TermObject"))?,
                 }
             }
-            op => Err(AmlError::InvalidOperand(op))?,
+            op => Err(AmlError::UnexpectedOp(op, "TermObject"))?,
         }
         Ok(())
     }
@@ -641,7 +625,6 @@ impl AmlVM {
                     | u32::from(self.next()?) << 12
                     | u32::from(self.next()?) << 20
             }
-
             data => Err(AmlError::InvalidData(data))?,
         })
     }
@@ -660,7 +643,7 @@ impl ByteCodeInstruction for Buffer {
             let size = ctx.exec_term_arg()?.interger()?;
             todo!()
         } else {
-            Err(AmlError::InvalidOperand(op))
+            Err(AmlError::UnexpectedOp(op, "Buffer"))
         }
     }
 }

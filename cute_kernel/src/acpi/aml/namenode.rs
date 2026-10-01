@@ -71,6 +71,6 @@ impl NameNode {
                 return Ok(*child);
             }
         }
-        Err(AmlError::NoChildNodeBy(name.clone()))
+        Err(AmlError::NoChildNodeBy(self.name.clone(), name.clone()))
     }
 }
