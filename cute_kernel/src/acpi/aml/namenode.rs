@@ -36,7 +36,7 @@ impl AmlData {
         if let Self::Interger(int) = self {
             Ok(*int)
         } else {
-            Err(AmlError::InvalidAmlData(self.clone()))
+            Err(AmlError::InvalidAmlData(self.clone(), "AmlData to int"))
         }
     }
 }
@@ -62,6 +62,10 @@ impl NameNode {
             data,
             children: Vec::new(),
         }
+    }
+
+    pub fn append_child(&mut self, child_ref: ObjRef) {
+        self.children.push(child_ref);
     }
 
     pub fn find_child(&self, ctx: &AmlVM, name: &NameSeg) -> Result<ObjRef, AmlError> {

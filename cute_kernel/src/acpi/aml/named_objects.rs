@@ -38,11 +38,11 @@ impl ByteCodeInstruction for NameSeg {
             if byte.is_ascii_uppercase() || byte.is_ascii_digit() || matches!(byte, b'_') {
                 *c = byte;
             } else {
-                Err(AmlError::InvalidData(byte))?;
+                Err(AmlError::InvalidData(byte, "NameSeg"))?;
             }
         }
         if seg[0].is_ascii_digit() {
-            Err(AmlError::InvalidData(seg[0]))
+            Err(AmlError::InvalidData(seg[0], "NameSeg"))
         } else {
             Ok(Self(seg))
         }
@@ -158,7 +158,7 @@ impl ByteCodeInstruction for NameString {
                 }
                 Self::Rel(NamePath::exec(stream)?, parent)
             }
-            _ => Err(AmlError::InvalidData(byte))?,
+            _ => Err(AmlError::InvalidData(byte, "NameString"))?,
         })
     }
 }

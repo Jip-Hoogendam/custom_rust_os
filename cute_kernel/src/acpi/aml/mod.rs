@@ -29,10 +29,12 @@ pub enum AmlError {
     PackageTooLong(u64),
     NamedObjectNotFound(NamePath),
 
+    IndexOutOfBounds(usize),
+
     InvalidOperand(u8),
     InvalidExtOperand(u8),
-    InvalidData(u8),
-    InvalidAmlData(AmlData),
+    InvalidData(u8, &'static str),
+    InvalidAmlData(AmlData, &'static str),
     InvalidArgIndex(u8),
     InvalidLocalIndex(u8),
     InvalidObjectRef(ObjRef),
@@ -43,6 +45,11 @@ pub enum AmlError {
     NoChildNodeBy(NameSeg, NameSeg),
     RecursionLimitHit(usize),
     ScopeErr(NameSeg, Box<AmlStackFrame>),
+
+    DuplicateName(NameSeg),
+
+    DivByZero,
+
     TermEnd,
 }
 
@@ -62,8 +69,8 @@ impl Display for AmlError {
                 Self::NamedObjectNotFound(path) => format!("NamedObjectNotFound: Bytecode requested a named object at {path} but this does not exist."),
                 Self::InvalidOperand(op) => format!("InvalidOperand: AmlVM tried to decode non defined operand, found op : {op:#0x}"),
                 Self::InvalidExtOperand(extop) => format!("InvalidExtOperand: AmlVM tried to decode a undefined ext operand, found extop : {extop:#0x}"),
-                Self::InvalidData(byte) => format!("InvalidData: AmlVM failed to decode something as the passed data was invalid failed on byte : {byte:#0x}"),
-                Self::InvalidAmlData(data) => format!("InvalidAmlData: AmlVM expected the data to be of a diffent type, found data: {data:?}"),
+                Self::InvalidData(byte, while_parse) => format!("InvalidData: AmlVM failed to decode {while_parse} as the passed data was invalid failed on byte : {byte:#0x}"),
+                Self::InvalidAmlData(data, while_parse) => format!("InvalidAmlData: AmlVM expected the data to be of a diffent type while parseing {while_parse}, found data: {data:?}"),
                 Self::InvalidArgIndex(index) => format!("InvalidArgIndex: Arg at {index} is not defined in AmlVM"),
                 Self::InvalidLocalIndex(index) => format!("InvalidLocalIndex: Local at {index} is not defined in AmlVM"),
                 Self::InvalidObjectRef(obj_ref) => format!("InvalidOpjectRef: No object exists at {} in AmlVM", obj_ref.usize()),
@@ -71,7 +78,10 @@ impl Display for AmlError {
                 Self::UnexpectedExtOp(op,while_parse) => format!("UnexpectedExtOp: AmlVM found unexpected ext op {op:?} while parseing {while_parse}"),
                 Self::NoChildNodeBy(obj, name) => format!("NoChildNodeBy: AmlVM found no child named {name} in {obj}"),
                 Self::RecursionLimitHit(limit) => format!("RecursionLimitHit: AmlVM hit its recursion limit of {limit}" ),
-                Self::ScopeErr(scope, stack_frame) => format!("inside: {} at index {}\n{}", scope, stack_frame.index, stack_frame.error),
+                Self::ScopeErr(scope, stack_frame) => format!("Scope: {} Stream {}\n{}", scope, stack_frame.stream, stack_frame.error),
+                Self::DuplicateName(name) => format!("DuplicateName: AmlVM tried to push a already existing name int object"),
+                Self::DivByZero => String::from("DivByZero: AmlVM attempted to divide by zero"),
+                Self::IndexOutOfBounds(at) => format!("IndexOutOfBounds: AmlVM tried to index out of bounds at {at}"),
                 Self::TermEnd => String::from("TermEnd: AmlVM finised correctly"),
             }
         )

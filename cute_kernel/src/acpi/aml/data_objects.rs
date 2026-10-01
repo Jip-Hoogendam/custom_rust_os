@@ -12,14 +12,14 @@ use crate::acpi::aml::{
 #[derive(Debug, Clone)]
 pub struct AmlString(pub Box<[u8]>);
 
-impl ByteCodeInstruction for AmlString {
-    fn exec(ctx: &mut AmlVM) -> Result<Self, AmlError> {
+impl ByteCodeObject for AmlString {
+    fn load(ctx: &mut AmlVM) -> Result<Self, AmlError> {
         let mut string = vec![];
         loop {
             match ctx.next()? {
                 0x00 => break Ok(Self(string.into_boxed_slice())),
                 char @ 0x01..0x7F => string.push(char),
-                data => break Err(AmlError::InvalidData(data)),
+                data => break Err(AmlError::InvalidData(data, "AmlString")),
             }
         }
     }
