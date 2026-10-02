@@ -38,6 +38,7 @@ pub enum AmlError {
     InvalidArgIndex(u8),
     InvalidLocalIndex(u8),
     InvalidObjectRef(ObjRef),
+    InvalidArgCount(usize, u8),
 
     UnexpectedOp(AmlOp, &'static str),
     UnexpectedExtOp(ExtOp, &'static str),
@@ -45,11 +46,14 @@ pub enum AmlError {
     NoChildNodeBy(NameSeg, NameSeg),
     RecursionLimitHit(usize),
     ScopeErr(NameSeg, Box<AmlStackFrame>),
+    MutDebugObj,
 
     DuplicateName(NameSeg),
 
     DivByZero,
 
+    ///Could be errorrs
+    Break,
     TermEnd,
 }
 
@@ -79,9 +83,13 @@ impl Display for AmlError {
                 Self::NoChildNodeBy(obj, name) => format!("NoChildNodeBy: AmlVM found no child named {name} in {obj}"),
                 Self::RecursionLimitHit(limit) => format!("RecursionLimitHit: AmlVM hit its recursion limit of {limit}" ),
                 Self::ScopeErr(scope, stack_frame) => format!("Scope: {} Stream {}\n{}", scope, stack_frame.stream, stack_frame.error),
-                Self::DuplicateName(name) => format!("DuplicateName: AmlVM tried to push a already existing name int object"),
+                Self::DuplicateName(name) => format!("DuplicateName: AmlVM tried to push a already object by {name} into a namenode"),
                 Self::DivByZero => String::from("DivByZero: AmlVM attempted to divide by zero"),
                 Self::IndexOutOfBounds(at) => format!("IndexOutOfBounds: AmlVM tried to index out of bounds at {at}"),
+                Self::MutDebugObj => String::from("MutDebugObj: AmlVM tried to mutate the debug object"),
+                Self::InvalidArgCount(count, exp) => format!("InvalidArgCount: AmlVM tried to invoke a function but too little arguments where passed. Got {count} expected {exp}"),
+
+                Self::Break => String::from("Break: AmlVM executed break not in a loop"),
                 Self::TermEnd => String::from("TermEnd: AmlVM finised correctly"),
             }
         )

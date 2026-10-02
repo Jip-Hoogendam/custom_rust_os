@@ -184,18 +184,19 @@ use crate::{
     multi_tasking::scheduler,
     tables::idt::InteruptDiscriptorIndex,
 };
+#[cfg(test)]
+use crate::{
+    arch::registers::sp,
+    memory::{addresses::Address, pageing::MemoryMapper},
+    multi_processors::{init_proscessors, write_trampoline},
+    time::set_system_clock_source_8253pit,
+};
 use crate::{
     interrupts::interupt_gaurd::{InteruptController, InteruptGaurd},
     tables::{
         DiscriptorTables,
         gdt::{SegmentDiscriptor, SystemSegmentDiscriptor},
     },
-};
-#[cfg(test)]
-use crate::{
-    memory::pageing::MemoryMapper,
-    multi_processors::{init_proscessors, write_trampoline},
-    time::set_system_clock_source_8253pit,
 };
 #[cfg(test)]
 use bootloader_api::{BootInfo, BootloaderConfig, config::Mapping, entry_point, info::Optional};
@@ -272,7 +273,7 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
             g,
         );
 
-        LOCAL_APIC.set_timer_intial_count(10000, g);
+        // LOCAL_APIC.set_timer_intial_count(10000, g);
 
         println!("Initlilizing Scheduler");
         scheduler::SCHEDULER.init(4, g);
@@ -296,6 +297,10 @@ fn test_kernel_main(boot_info: &'static mut BootInfo) -> ! {
         LOCAL_APIC.getid(),
     );
 
+    serial_println!(
+        "sp top :{}",
+        boot_info.kernel_stack_bottom - boot_info.kernel_stack_len
+    );
     write_trampoline(&mut memory_mapper);
 
     init_proscessors(

@@ -1,0 +1,47 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=latex 2026.3.30)  2 OCT 2026 17:28
+entering extended mode
+ restricted \write18 enabled.
+ %&-line parsing enabled.
+**"wordcount.tex\csname ?\endcsname"
+(/usr/local/texlive/2026/texmf-dist/tex/latex/wordcount/wordcount.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+File: wordcount.tex 2016/06/03 v1.7 Michael Downes
+(/usr/local/texlive/2026/texmf-dist/tex/latex/base/fontenc.sty
+Package: fontenc 2025/07/18 v2.1d Standard LaTeX package
+)
+\thickmuskip=\muskip17
+\@charfontname=\skip49
+\hfuzz=\dimen148
+
+No auxiliary output files.
+
+File name [press RETURN to cancel]: -h
+-h
+Processing -h...
+
+
+
+! LaTeX Error: File `-h.tex' not found.
+
+Type X to quit or <RETURN> to proceed,
+or enter new name. (Default extension: tex)
+
+Enter file name: 
+! Emergency stop.
+<read *> 
+         
+l.198 \@tempa
+             ^^M
+*** (cannot \read from terminal in nonstop modes)
+
+ 
+Here is how much of TeX's memory you used:
+ 256 strings out of 467526
+ 2521 string characters out of 5419014
+ 433753 words of memory out of 5000000
+ 29259 multiletter control sequences out of 15000+600000
+ 630134 words of font info for 42 fonts, out of 8000000 for 9000
+ 1141 hyphenation exceptions out of 8191
+ 31i,0n,37p,148b,40s stack positions out of 10000i,1000n,20000p,200000b,200000s
+No pages of output.

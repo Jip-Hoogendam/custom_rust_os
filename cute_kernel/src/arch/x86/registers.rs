@@ -6,6 +6,7 @@ use crate::memory::{
 };
 
 pub trait Register {
+    #[must_use]
     fn read() -> Self;
 }
 
@@ -28,4 +29,14 @@ impl Cr3 {
         let addr = PhysAddr::new(self.0 & !0xFFF);
         PhysFrame::new(addr)
     }
+}
+
+#[inline]
+#[must_use]
+pub fn sp() -> usize {
+    let data;
+    unsafe {
+        asm!("mov {}, rsp", out(reg) data);
+    }
+    data
 }

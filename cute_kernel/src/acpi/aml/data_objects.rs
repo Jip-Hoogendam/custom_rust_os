@@ -78,15 +78,13 @@ pub struct Package {
 
 impl Package {
     pub fn var_load(ctx: &mut AmlVM) -> Result<Self, AmlError> {
-        let start = ctx.stream().index();
         let len = ctx.decode_pkg_length()?;
         let elements = ctx.exec_term_arg()?.interger()?;
         let elements = ctx.fn_for(
             usize::try_from(elements)
                 .ok()
                 .ok_or(AmlError::PackageTooLong(elements))?,
-            start,
-            len as usize,
+            len,
             executor::AmlVM::exec_package_element,
         )?;
         Ok(Self { elements })
@@ -95,13 +93,11 @@ impl Package {
 
 impl ByteCodeObject for Package {
     fn load(ctx: &mut AmlVM) -> Result<Self, AmlError> {
-        let start = ctx.stream().index();
         let len = ctx.decode_pkg_length()?;
         let elements = ctx.next()?;
         let elements = ctx.fn_for(
             usize::from(elements),
-            start,
-            len as usize,
+            len,
             executor::AmlVM::exec_package_element,
         )?;
         Ok(Self { elements })

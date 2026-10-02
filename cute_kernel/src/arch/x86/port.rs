@@ -45,15 +45,15 @@ impl<T: Copy> Port<T> {
         match size_of::<T>() {
             1 => unsafe {
                 let data: u8 = *(&raw const data).cast();
-                asm! {"out dx, {D}",   in("dx") self.port, D = in(reg_byte) data, options(nomem, nostack, preserves_flags)}
+                asm! {"out dx, al",   in("dx") self.port, in("al") data, options(nomem, nostack, preserves_flags)}
             },
             2 => unsafe {
                 let data: u16 = *(&raw const data).cast();
-                asm! {"out dx, {D:x}", in("dx") self.port, D = in(reg) data, options(nomem, nostack, preserves_flags)}
+                asm! {"out dx, ax", in("dx") self.port, in("ax") data, options(nomem, nostack, preserves_flags)}
             },
             4 => unsafe {
                 let data: u32 = *(&raw const data).cast();
-                asm! {"out dx, {D:e}", in("dx") self.port, D = in(reg) data,  options(nomem, nostack, preserves_flags)}
+                asm! {"out dx, eax", in("dx") self.port, in("eax") data,  options(nomem, nostack, preserves_flags)}
             },
             _ => unreachable!(),
         }

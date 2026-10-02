@@ -1,9 +1,11 @@
 #!/bin/bash
 
 mkdir compiled
-postf=.aml
+postf=.asl
+prefix=test_cases/
 
-for i in *.asl; do
-  name="${i%$postf}"
-  iasl -p./compiled/$i $name
+for i in test_cases/*.asl; do
+  string="${i%$postf}"
+  name="${string#$prefix}"
+  iasl -oa -f -p./compiled/$name $i
 done

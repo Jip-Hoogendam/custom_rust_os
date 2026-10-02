@@ -10,6 +10,7 @@ kernel-test = [
   "cute_kernel",
   "--target",
   "x86_64-unknown-none",
+  "--release",
   "--features",
   "qemu-test",
 ]
