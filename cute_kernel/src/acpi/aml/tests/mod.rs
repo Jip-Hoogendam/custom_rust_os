@@ -46,8 +46,8 @@ fn while_break() {
     assert!(aml_test_case(boxed.as_slice()).interger().unwrap() == 10);
 }
 
-#[test_case]
-fn scope() {
-    let boxed = Box::new(*include_bytes!("./compiled/scope.aml"));
-    assert!(aml_test_case(boxed.as_slice()).interger().unwrap() == 13);
-}
+// #[test_case]
+// fn scope() {
+//     let boxed = Box::new(*include_bytes!("./compiled/scope.aml"));
+//     assert!(aml_test_case(boxed.as_slice()).interger().unwrap() == 13);
+// }

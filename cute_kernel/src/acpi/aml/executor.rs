@@ -6,6 +6,8 @@ use core::{
     time::Duration,
 };
 
+use super::stack_items::StackItem;
+
 use crate::{
     acpi::aml::{
         AmlError, ByteCodeInstruction, ByteCodeObject,
@@ -172,6 +174,8 @@ impl Display for AmlStackFrame {
 pub struct AmlVM {
     stream: ByteStream,
     top_level_node: ObjRef,
+    stack_ptr: usize,
+    stack: Box<[StackItem]>,
     heap: TypedArena<NameNode>,
     args: [AmlData; 7],
     local: [AmlData; 8],
@@ -179,7 +183,7 @@ pub struct AmlVM {
 
 impl AmlVM {
     #[must_use]
-    pub fn new(start_point: *const u8, length: usize) -> Self {
+    pub fn new(start_point: *const u8, length: usize, stack_size: usize) -> Self {
         let mut heap = TypedArena::new();
         let root_obj = NameNode::new(NameSeg::root(), AmlData::Null);
         let top_level_node = heap.instert(root_obj);
@@ -187,6 +191,9 @@ impl AmlVM {
             stream: ByteStream::new(start_point, length),
             heap,
             top_level_node,
+            stack_ptr: 0,
+            stack: vec![const { StackItem::Null }; stack_size].into_boxed_slice(),
+
             args: [
                 AmlData::default(),
                 AmlData::default(),
@@ -208,6 +215,14 @@ impl AmlVM {
                 AmlData::default(),
             ],
         }
+    }
+
+    pub fn push_stack_item(&mut self, stack_item: StackItem) -> Result<(), AmlError> {
+        *self
+            .stack
+            .get_mut(self.stack_ptr)
+            .ok_or(AmlError::StackOverflow)? = stack_item;
+        Ok(())
     }
 
     #[inline]

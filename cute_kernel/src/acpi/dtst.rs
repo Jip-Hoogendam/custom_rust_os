@@ -1,6 +1,9 @@
-use crate::acpi::{
-    aml::executor::AmlVM,
-    sdt::{SDTHeader, ShortSDTHeader},
+use crate::{
+    acpi::{
+        aml::executor::AmlVM,
+        sdt::{SDTHeader, ShortSDTHeader},
+    },
+    variables::AMLVM_STACK_SIZE,
 };
 
 #[derive(Debug)]
@@ -14,6 +17,6 @@ impl DSDT {
     pub fn create_amlvm(&self) -> AmlVM {
         let start = unsafe { (core::ptr::from_ref::<Self>(self)).add(1) }.cast::<u8>();
         let length = self.header.length as usize - size_of::<SDTHeader>();
-        AmlVM::new(start, length)
+        AmlVM::new(start, length, AMLVM_STACK_SIZE)
     }
 }

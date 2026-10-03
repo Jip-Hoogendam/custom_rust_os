@@ -4,6 +4,9 @@
 
 //---------------- GLOBAL SETTINGS
 
+/// The default stack size of the amlvm
+pub const AMLVM_STACK_SIZE: usize = 100;
+
 /// System timer frequency
 pub const DESIRED_CLOCK_FREAKUENCY: usize = 150; //hz
 

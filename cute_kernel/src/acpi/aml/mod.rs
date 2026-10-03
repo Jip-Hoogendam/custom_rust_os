@@ -16,6 +16,7 @@ pub mod named_objects;
 pub mod namenode;
 pub mod opcodes;
 pub mod parser;
+mod stack_items;
 pub mod tests;
 
 ///Defines all error types by the aml executor
@@ -50,6 +51,7 @@ pub enum AmlError {
 
     DuplicateName(NameSeg),
 
+    StackOverflow,
     DivByZero,
 
     ///Could be errorrs
@@ -88,6 +90,8 @@ impl Display for AmlError {
                 Self::IndexOutOfBounds(at) => format!("IndexOutOfBounds: AmlVM tried to index out of bounds at {at}"),
                 Self::MutDebugObj => String::from("MutDebugObj: AmlVM tried to mutate the debug object"),
                 Self::InvalidArgCount(count, exp) => format!("InvalidArgCount: AmlVM tried to invoke a function but too little arguments where passed. Got {count} expected {exp}"),
+
+                Self::StackOverflow => String::from("StackOverflow: AmlVM stack overflow"),
 
                 Self::Break => String::from("Break: AmlVM executed break not in a loop"),
                 Self::TermEnd => String::from("TermEnd: AmlVM finised correctly"),
