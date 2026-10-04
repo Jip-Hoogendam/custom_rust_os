@@ -35,8 +35,8 @@ fn aml_test_case(boxed_data: &[u8]) -> AmlData {
     let args = [];
     match runner.get_or_exec(path, &args) {
         Ok(data) => data,
-        Err(e @ AmlError::ScopeErr(_, _)) => panic!("{}", e),
-        Err(e) => panic!("{}", e),
+        Err(e @ AmlError::ScopeErr(_, _)) => panic!("panic_a : {}", e),
+        Err(e) => panic!("panic_b : {}", e),
     }
 }
 
