@@ -3,7 +3,7 @@ use core::ops::Add;
 use alloc::{boxed::Box, vec};
 
 use crate::acpi::aml::{
-    AmlError, ByteCodeInstruction, ByteCodeObject,
+    AmlError, ByteCodeInstruction, Resolvable,
     executor::{self, AmlVM, Buffer},
     named_objects::NameString,
     namenode::AmlData,
@@ -12,8 +12,8 @@ use crate::acpi::aml::{
 #[derive(Debug, Clone)]
 pub struct AmlString(pub Box<[u8]>);
 
-impl ByteCodeObject for AmlString {
-    fn load(ctx: &mut AmlVM) -> Result<Self, AmlError> {
+impl AmlString {
+    pub fn exec(ctx: &mut AmlVM) -> Result<Self, AmlError> {
         let mut string = vec![];
         loop {
             match ctx.next()? {
@@ -76,30 +76,18 @@ pub struct Package {
     elements: Box<[AmlData]>,
 }
 
-impl Package {
-    pub fn var_load(ctx: &mut AmlVM) -> Result<Self, AmlError> {
-        let len = ctx.decode_pkg_length()?;
-        let elements = ctx.exec_term_arg()?.interger()?;
+impl Resolvable for Package {
+    fn load(ctx: &mut AmlVM, start: usize) -> Result<Self, AmlError> {
+        let len = ctx.pop_data()?.interger()?;
+        let elements = ctx.pop_data()?.interger()?;
+        let strea_save = ctx.stream().index();
+        ctx.stream().index = start;
         let elements = ctx.fn_for(
-            usize::try_from(elements)
-                .ok()
-                .ok_or(AmlError::PackageTooLong(elements))?,
-            len,
+            elements as usize,
+            len as usize,
             executor::AmlVM::exec_package_element,
         )?;
-        Ok(Self { elements })
-    }
-}
-
-impl ByteCodeObject for Package {
-    fn load(ctx: &mut AmlVM) -> Result<Self, AmlError> {
-        let len = ctx.decode_pkg_length()?;
-        let elements = ctx.next()?;
-        let elements = ctx.fn_for(
-            usize::from(elements),
-            len,
-            executor::AmlVM::exec_package_element,
-        )?;
+        ctx.stream().index = strea_save;
         Ok(Self { elements })
     }
 }

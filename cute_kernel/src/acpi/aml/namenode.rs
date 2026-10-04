@@ -6,21 +6,24 @@ use crate::{
     acpi::aml::{
         AmlError,
         data_objects::{AmlString, Package},
-        executor::{AmlVM, Buffer, ByteStream, ObjRef},
+        executor::{AmlStackFrame, AmlVM, ArgObj, Buffer, ByteStream, LocalObj, ObjRef},
         named_objects::{NameSeg, NameString, NamedObjects},
+        stack_items::StackItem,
     },
-    collections::typed_arena::TypedArenaAllocation,
     serial_println,
 };
 
 ///Node types that gets created or passed by the AML
 #[derive(Debug, Default, Clone)]
 pub enum AmlData {
-    Alias(ObjRef),
     ObjRef(ObjRef),
+    Arg(ArgObj),
+    Local(LocalObj),
+    Index(ObjRef, usize),
+    Debug,
+
     Buffer(Buffer),
     Interger(u64),
-    Byte(u8),
     NameString(NameString),
     NamedObject(NamedObjects),
     Method(Method),
@@ -68,7 +71,7 @@ impl Method {
         for i in 0..self.arg_c {
             *args
                 .get_mut(usize::from(i))
-                .ok_or(AmlError::InvalidArgCount(i as usize, self.arg_c))? = ctx.exec_term_arg()?;
+                .ok_or(AmlError::InvalidArgCount(i as usize, self.arg_c))? = ctx.pop_data()?;
             set += 1;
         }
 
@@ -76,7 +79,7 @@ impl Method {
             Err(AmlError::InvalidArgCount(set as usize, self.arg_c))?;
         }
 
-        self.call(ctx, &mut args, fn_name)
+        todo!()
     }
 
     #[inline]
@@ -92,24 +95,24 @@ impl Method {
 
         let mut stream_clone = self.data.clone();
         ctx.swp_byte_stream(&mut stream_clone);
-        let mut ret = AmlData::Null;
-        loop {
-            match ctx.exec_term_obj() {
-                Ok(data) => ret = data,
-                Err(AmlError::TermEnd) => break,
-                Err(e) => Err(AmlError::ScopeErr(
-                    fn_name.clone(),
-                    Box::new(super::executor::AmlStackFrame {
-                        error: e,
-                        stream: ctx.stream().clone(),
-                    }),
-                ))?,
-            }
+
+        ctx.stack.push(StackItem::MethodCall {
+            ret_index: stream_clone.index,
+            old_length: stream_clone.length,
+        })?;
+        match ctx.exec() {
+            Ok(()) => (),
+            Err(e) => Err(AmlError::ScopeErr(fn_name.clone(), Box::new(e)))?,
         }
         ctx.swp_byte_stream(&mut stream_clone);
 
         ctx.swp_locals(&mut locals);
         ctx.swp_args(args);
+        let ret = match ctx.stack.pop()? {
+            Some(StackItem::Data(data)) => data,
+            Some(_) => Err(AmlError::StackCorruption)?,
+            None => AmlData::Null,
+        };
         Ok(ret)
     }
 }
@@ -162,7 +165,6 @@ impl NameNode {
 
         if let Some(parent) = self.parent {
             let node = ctx.get_node(parent)?;
-            serial_println!("Call!");
             node.seek_scope(ctx, name)
         } else {
             Err(AmlError::NoChildNodeBy(self.name.clone(), name.clone()))

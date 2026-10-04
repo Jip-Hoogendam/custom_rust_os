@@ -51,6 +51,9 @@ pub enum AmlError {
 
     DuplicateName(NameSeg),
 
+    Return,
+
+    StackCorruption,
     StackOverflow,
     DivByZero,
 
@@ -90,7 +93,9 @@ impl Display for AmlError {
                 Self::IndexOutOfBounds(at) => format!("IndexOutOfBounds: AmlVM tried to index out of bounds at {at}"),
                 Self::MutDebugObj => String::from("MutDebugObj: AmlVM tried to mutate the debug object"),
                 Self::InvalidArgCount(count, exp) => format!("InvalidArgCount: AmlVM tried to invoke a function but too little arguments where passed. Got {count} expected {exp}"),
+                Self::Return => String::from("Return: Retrun was called. Should never happen....."),
 
+                Self::StackCorruption => String::from("StackCorruption: AmlVM stack got corrupted somehow"),
                 Self::StackOverflow => String::from("StackOverflow: AmlVM stack overflow"),
 
                 Self::Break => String::from("Break: AmlVM executed break not in a loop"),
@@ -108,9 +113,9 @@ where
     fn exec(ctx: &mut AmlVM) -> Result<Self, AmlError>;
 }
 
-pub trait ByteCodeObject
+pub trait Resolvable
 where
     Self: Sized,
 {
-    fn load(ctx: &mut AmlVM) -> Result<Self, AmlError>;
+    fn load(ctx: &mut AmlVM, start: usize) -> Result<Self, AmlError>;
 }

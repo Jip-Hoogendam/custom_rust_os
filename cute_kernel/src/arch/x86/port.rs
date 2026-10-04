@@ -24,7 +24,7 @@ impl<T: Copy> Port<T> {
         match size_of::<T>() {
             1 => unsafe {
                 let data: u8;
-                asm! {"in {D}, dx",  D = out(reg_byte) data, in("dx") self.port, options(nomem, nostack, preserves_flags)}
+                asm! {"in al, dx", out("al") data, in("dx") self.port, options(nomem, nostack, preserves_flags)}
                 *((&raw const data).cast())
             },
             2 => unsafe {
