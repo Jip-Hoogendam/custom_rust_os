@@ -32,7 +32,7 @@ pub enum AmlOp {
 
     ExtOpPrefix = 0x5B,
     ParentPrefixChar = b'^',
-    MethodInvoke = b'\\',
+    Rootchar = b'\\',
 
     Local0 = 0x60,
     Local1 = 0x61,

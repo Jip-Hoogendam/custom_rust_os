@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String, vec::Vec};
+use alloc::{boxed::Box, string::String};
 use bootloader_api::{BootInfo, entry_point, info::Optional};
 use cute_kernel::{
     acpi::{

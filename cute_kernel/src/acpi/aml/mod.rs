@@ -4,7 +4,7 @@ use crate::acpi::aml::{
     executor::{AmlStackFrame, AmlVM, ObjRef},
     named_objects::{NamePath, NameSeg},
     namenode::AmlData,
-    opcodes::{AmlOp, AnyAmlOp, ExtOp},
+    opcodes::{AmlOp, ExtOp},
 };
 use core::{error::Error, fmt::Display};
 

@@ -6,7 +6,7 @@ use crate::{
     acpi::aml::{
         AmlError,
         data_objects::{AmlString, Package},
-        executor::{AmlStackFrame, AmlVM, ArgObj, Buffer, ByteStream, LocalObj, ObjRef},
+        executor::{AmlVM, ArgObj, Buffer, ByteStream, LocalObj, ObjRef},
         named_objects::{NameSeg, NameString, NamedObjects},
         stack_items::StackItem,
     },
@@ -36,17 +36,7 @@ pub enum AmlData {
     Null,
 }
 
-impl AmlData {
-    pub fn invoke(self, ctx: &mut AmlVM, fn_name: &NameSeg) -> Result<AmlData, AmlError> {
-        if let AmlData::Method(method) = self {
-            method.invoke(ctx, fn_name)
-        } else {
-            Ok(self)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Method {
     data: ByteStream,
     pub arg_c: u8,
@@ -56,6 +46,7 @@ pub struct Method {
 
 impl Method {
     #[inline]
+    #[must_use]
     pub const fn new(data: ByteStream, method_flags: u8) -> Self {
         Self {
             data,
@@ -65,7 +56,7 @@ impl Method {
         }
     }
 
-    pub fn invoke(&self, ctx: &mut AmlVM, fn_name: &NameSeg) -> Result<AmlData, AmlError> {
+    pub fn invoke(&self, ctx: &mut AmlVM, fn_name: &NameSeg) -> Result<(), AmlError> {
         let mut set = 0;
         let mut args = [const { AmlData::Null }; 7];
         for i in 0..self.arg_c {
@@ -79,7 +70,22 @@ impl Method {
             Err(AmlError::InvalidArgCount(set as usize, self.arg_c))?;
         }
 
-        todo!()
+        ctx.swp_args(&mut args);
+        let mut locals = [const { AmlData::Null }; 8];
+        ctx.swp_locals(&mut locals);
+
+        let index = ctx.stream().index;
+        let length = ctx.stream().length;
+
+        ctx.stack.push(StackItem::MethodCall {
+            ret_index: index,
+            old_length: length,
+            old_args: Box::new(args),
+            old_locals: Box::new(locals),
+        })?;
+
+        *ctx.stream() = self.data.clone();
+        Ok(())
     }
 
     #[inline]
@@ -96,20 +102,25 @@ impl Method {
         let mut stream_clone = self.data.clone();
         ctx.swp_byte_stream(&mut stream_clone);
 
+        ctx.stack.push(StackItem::Eval(AmlData::Null));
         ctx.stack.push(StackItem::MethodCall {
             ret_index: stream_clone.index,
             old_length: stream_clone.length,
+            old_args: Box::new(args.clone()),
+            old_locals: Box::new(locals.clone()),
         })?;
+
         match ctx.exec() {
             Ok(()) => (),
             Err(e) => Err(AmlError::ScopeErr(fn_name.clone(), Box::new(e)))?,
         }
+
         ctx.swp_byte_stream(&mut stream_clone);
 
         ctx.swp_locals(&mut locals);
         ctx.swp_args(args);
         let ret = match ctx.stack.pop()? {
-            Some(StackItem::Data(data)) => data,
+            Some(StackItem::Eval(data)) => data,
             Some(_) => Err(AmlError::StackCorruption)?,
             None => AmlData::Null,
         };
@@ -129,6 +140,7 @@ impl AmlData {
 }
 
 /// A object that gets created by the AML
+#[derive(Debug)]
 pub struct NameNode {
     pub parent: Option<ObjRef>,
     pub name: NameSeg,
@@ -142,6 +154,7 @@ impl NameNode {
         self.data = data;
     }
 
+    #[must_use]
     pub const fn new(name: NameSeg, data: AmlData) -> Self {
         Self {
             parent: None,
@@ -158,6 +171,7 @@ impl NameNode {
     pub fn seek_scope(&self, ctx: &AmlVM, name: &NameSeg) -> Result<ObjRef, AmlError> {
         for child in &self.children {
             let obj = ctx.get_node(*child)?;
+
             if *name == obj.name {
                 return Ok(*child);
             }
@@ -167,8 +181,18 @@ impl NameNode {
             let node = ctx.get_node(parent)?;
             node.seek_scope(ctx, name)
         } else {
-            Err(AmlError::NoChildNodeBy(self.name.clone(), name.clone()))
+            Ok(ObjRef::null())
         }
+    }
+
+    pub fn has_child(&self, ctx: &AmlVM, name: &NameSeg) -> Result<bool, AmlError> {
+        for child in &self.children {
+            let obj = ctx.get_node(*child)?;
+            if *name == obj.name {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     pub fn find_child(&self, ctx: &AmlVM, name: &NameSeg) -> Result<ObjRef, AmlError> {
@@ -178,7 +202,6 @@ impl NameNode {
                 return Ok(*child);
             }
         }
-
-        Err(AmlError::NoChildNodeBy(self.name.clone(), name.clone()))
+        Ok(ObjRef::null())
     }
 }

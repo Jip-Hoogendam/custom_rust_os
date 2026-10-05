@@ -1,15 +1,13 @@
-use core::ops::Add;
-
 use alloc::{boxed::Box, vec};
 
 use crate::acpi::aml::{
-    AmlError, ByteCodeInstruction, Resolvable,
+    AmlError, Resolvable,
     executor::{self, AmlVM, Buffer},
     named_objects::NameString,
     namenode::AmlData,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AmlString(pub Box<[u8]>);
 
 impl AmlString {

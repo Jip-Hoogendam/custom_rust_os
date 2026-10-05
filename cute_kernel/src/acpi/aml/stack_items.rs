@@ -13,17 +13,22 @@ pub struct OpRes {
 #[derive(Debug, Clone)]
 pub enum StackItem {
     Data(AmlData),
-    TermArg,   //expect any aml data
-    NamePath,  //Expect objref
-    SuperName, //Expect objref
-    Target,    //Expect objref
+    TermArg,    //expect any aml data
+    SuperName,  //Expect objref
+    NameString, //Expect objref
+    SimpleName,
+    DataRefObj,
+    Target, //Expect objref
     Pkglen,
     Byte,
+    Eval(AmlData),
 
     Return,
     MethodCall {
         ret_index: usize,
         old_length: usize,
+        old_args: Box<[AmlData; 7]>,
+        old_locals: Box<[AmlData; 8]>,
     },
 
     Conditional {
@@ -63,20 +68,23 @@ impl AmlStack {
     }
 
     pub fn push_data(&mut self, item: AmlData) -> Result<(), AmlError> {
-        if matches!(item, AmlData::Null) {
-            return Ok(()); //Dont push null data onto the stack!
-        }
-        if let Some(StackItem::UnreselvedOp { arg_s, .. }) = self.peek() {
-            let index = *arg_s as usize;
-            let index = self.stack_ptr - index - 1;
-            return if let Some(curr) = self.stack.get_mut(index)
-                && !matches!(curr, StackItem::Data(_))
-            {
-                *curr = StackItem::Data(item);
-                Ok(())
-            } else {
-                Err(AmlError::StackCorruption)
-            };
+        match self.peek() {
+            Some(StackItem::UnreselvedOp { arg_s, .. }) => {
+                let index = *arg_s as usize;
+                let index = self.stack_ptr - index - 1;
+                return if let Some(curr) = self.stack.get_mut(index)
+                    && !matches!(curr, StackItem::Data(_))
+                {
+                    *curr = StackItem::Data(item);
+                    Ok(())
+                } else {
+                    Err(AmlError::StackCorruption)
+                };
+            }
+            Some(StackItem::Eval(data)) => {
+                *data = item;
+            }
+            _ => (),
         }
         Ok(()) //Dont really need random data on the stack
     }
@@ -102,6 +110,8 @@ impl AmlStack {
             .stack
             .get_mut(self.stack_ptr)
             .ok_or(AmlError::StackOverflow)?;
+
+        serial_println!("Pop: {:?}", data);
         core::mem::swap(&mut res, data);
 
         Ok(Some(res))
@@ -132,6 +142,7 @@ impl AmlStack {
     ///Pops unresolved data from the stack to work with.
     pub fn pop_unresolved(&mut self) -> Result<Option<StackItem>, AmlError> {
         if let Some(data) = self.peek() {
+            serial_println!("peek : {:?}", data);
             match data {
                 StackItem::UnreselvedOp {
                     op_index,
@@ -142,11 +153,11 @@ impl AmlStack {
                         *arg_s += 1;
                         let index = *arg_s as usize;
                         let index = self.stack_ptr - index - 1;
-                        Ok(self.stack.get(index).map(|x| x.clone()))
+                        Ok(self.stack.get(index).cloned())
                     } else {
                         let data = Some(StackItem::ResOp(*op_index));
                         self.pop()?;
-                        return Ok(data);
+                        Ok(data)
                     }
                 }
                 StackItem::MethodCall { .. }
@@ -161,7 +172,7 @@ impl AmlStack {
     }
 
     ///Looks at the top of the stack and returns a mutable pointer to it
-    fn peek(&mut self) -> Option<&mut StackItem> {
+    pub fn peek(&mut self) -> Option<&mut StackItem> {
         let index = self.stack_ptr.checked_sub(1)?;
         self.stack.get_mut(index)
     }
@@ -171,25 +182,11 @@ impl AmlStack {
         for item in args.iter().rev() {
             self.push(item.clone())?;
         }
+        #[allow(clippy::cast_possible_truncation)]
         self.push(StackItem::UnreselvedOp {
             op_index,
             arg_c: args.len() as u8,
             arg_s: 0u8,
         })
     }
-
-    // pub fn push_op(&mut self, op: AmlOp) -> Result<(), AmlError> {
-    //     use AmlOp::*;
-    //     use StackItem::*;
-    //     match op {
-    //         LandOp | LorOp | LLlessOp | LgreaterOp | LequalOp => {
-    //             self.op_arg_push(op, &[TermArg, TermArg])
-    //         }
-    //         AddOp | SubtractOp | XorOp | AndOp | OrOp | MultiplyOp => {
-    //             self.op_arg_push(op, &[TermArg, TermArg, Target])
-    //         }
-    //         IfOp => self.op_arg_push(op, &[TermArg]),
-    //         _ => Err(AmlError::UnexpectedOp(op, "Stack Op push")),
-    //     }
-    // }
 }

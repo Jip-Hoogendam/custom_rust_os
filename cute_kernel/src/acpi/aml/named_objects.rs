@@ -2,23 +2,22 @@ use core::fmt::Display;
 
 use alloc::{boxed::Box, format, string::String, vec};
 
-use crate::{
-    acpi::aml::{
-        AmlError, ByteCodeInstruction,
-        executor::{AmlVM, ArgObj, Buffer, LocalObj, ObjRef},
-        opcodes::AmlOp,
-    },
-    println, serial_print,
+use crate::acpi::aml::{
+    AmlError, ByteCodeInstruction,
+    executor::{AmlVM, ArgObj, LocalObj},
+    opcodes::AmlOp,
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct NameSeg([u8; 4]);
 
 impl NameSeg {
-    pub fn root() -> Self {
+    #[must_use]
+    pub const fn root() -> Self {
         Self([0, 0, 0, 0])
     }
 
+    #[must_use]
     pub fn from_bytes(bytes: [u8; 4]) -> Option<Self> {
         if bytes[0].is_ascii_digit() {
             return None;
@@ -81,13 +80,11 @@ impl Display for NamePath {
             "{}",
             match self {
                 Self::NullName => String::from("[NULL_NAME]"),
-                Self::NameSeg(seg) => format!("\\\\{}", seg),
-                Self::DualNamePath(seg_1, seg_2) => format!("\\\\{}.{}", seg_1, seg_2),
+                Self::NameSeg(seg) => format!("\\\\{seg}"),
+                Self::DualNamePath(seg_1, seg_2) => format!("\\\\{seg_1}.{seg_2}"),
                 Self::MultiNamePath(segs) => format!(
                     "\\\\{}",
-                    segs.iter()
-                        .map(|seg| format!(".{}", seg))
-                        .collect::<String>()
+                    segs.iter().map(|seg| format!(".{seg}")).collect::<String>()
                 ),
             }
         )
@@ -95,13 +92,15 @@ impl Display for NamePath {
 }
 
 impl NamePath {
-    pub fn iter(&self) -> NamePathIter {
+    #[must_use]
+    pub const fn iter(&self) -> NamePathIter<'_> {
         NamePathIter {
             namepath: self,
             index: 0,
         }
     }
 
+    #[must_use]
     pub fn from_string(path: &str) -> Option<Self> {
         let (root, path) = path.split_at(2);
         if root != "\\\\" {
@@ -221,7 +220,7 @@ impl ByteCodeInstruction for SimpleName {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum RegionSpace {
     SystemMemory = 0x00,
@@ -259,7 +258,7 @@ impl RegionSpace {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NamedObjects {
     OpRegionOp {
         region_space: RegionSpace,

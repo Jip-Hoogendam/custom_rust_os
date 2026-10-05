@@ -1,27 +1,26 @@
-use alloc::{boxed::Box, string::String, vec};
+use alloc::{boxed::Box, vec};
 use core::{
     error::Error,
-    fmt::{Display, write},
+    fmt::Display,
     ops::{BitAnd, BitOr, BitXor},
-    time::Duration,
 };
 
 use super::stack_items::StackItem;
 
 use crate::{
     acpi::aml::{
-        AmlError, ByteCodeInstruction, Resolvable,
-        data_objects::{AmlString, DataObj, Package, load_byte, load_dword, load_qword, load_word},
-        named_objects::{NamePath, NameSeg, NameString, RegionSpace},
+        AmlError, ByteCodeInstruction,
+        data_objects::{AmlString, load_byte, load_dword, load_qword, load_word},
+        named_objects::{NamePath, NameSeg, NameString},
         namenode::{AmlData, Method, NameNode},
-        opcodes::{AmlOp, AnyAmlOp, ExtOp},
+        opcodes::{AmlOp, ExtOp},
         stack_items::AmlStack,
     },
     collections::typed_arena::{TypedArena, TypedArenaAllocation},
     serial_println,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ByteStream {
     bytes: *const u8,
     pub index: usize,
@@ -104,7 +103,7 @@ impl Iterator for ByteStream {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ArgObj(u8);
 impl ArgObj {
     fn parse(op: AmlOp) -> Result<Self, AmlError> {
@@ -125,7 +124,7 @@ impl ByteCodeInstruction for ArgObj {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalObj(u8);
 impl LocalObj {
     fn parse(op: AmlOp) -> Result<Self, AmlError> {
@@ -177,44 +176,52 @@ pub struct AmlVM {
 }
 
 impl AmlVM {
+    ///Crates a new AML vm to process aml data
+    ///
+    /// # Panics
+    /// Never i just don't want to disable the clippy
     #[must_use]
+    #[rustfmt::skip]
     pub fn new(start_point: *const u8, length: usize, stack_size: usize) -> Self {
         let mut heap = TypedArena::new();
         let root_obj = NameNode::new(NameSeg::root(), AmlData::Null);
-        let top_level_node = heap.instert(root_obj);
-        Self {
+        let root_ref = heap.instert(root_obj);
+
+        let mut new = Self {
             stream: ByteStream::new(start_point, length),
             heap,
-            top_level_node,
+            top_level_node: root_ref,
             stack: AmlStack::new(stack_size),
-
             args: [
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
+                AmlData::default(),AmlData::default(),AmlData::default(),AmlData::default(),
+                AmlData::default(),AmlData::default(),AmlData::default(),
             ],
-
             local: [
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
-                AmlData::default(),
+                AmlData::default(),AmlData::default(),AmlData::default(),AmlData::default(),
+                AmlData::default(),AmlData::default(),AmlData::default(),AmlData::default(),
             ],
-        }
+        };
+
+        new.append_to_node(root_ref, NameNode::new(NameSeg::from_bytes(*b"_TZ_").unwrap(), AmlData::Null)).unwrap();
+        new.append_to_node(root_ref, NameNode::new(NameSeg::from_bytes(*b"_SI_").unwrap(), AmlData::Null)).unwrap();
+        new.append_to_node(root_ref, NameNode::new(NameSeg::from_bytes(*b"_SB_").unwrap(), AmlData::Null)).unwrap();
+        new.append_to_node(root_ref, NameNode::new(NameSeg::from_bytes(*b"_PR_").unwrap(), AmlData::Null)).unwrap();
+        new.append_to_node(root_ref, NameNode::new(NameSeg::from_bytes(*b"_GPE").unwrap(), AmlData::Null)).unwrap();
+
+        new
     }
 
+    ///Executes from the current stream pointer.
+    ///
+    /// # Errors
+    /// Bubbles up any error the vm encountered while its processor.
     pub fn exec(&mut self) -> Result<(), AmlStackFrame> {
         loop {
             match self.stack.pop_unresolved() {
-                Ok(Some(StackItem::Return)) if self.stream.done() => break,
+                Ok(Some(item @ StackItem::Eval(_))) => {
+                    self.stack.push(item);
+                    break;
+                }
                 Ok(Some(item)) => self.resolve_stack_item(item),
                 Ok(None) => {
                     if self.stream.done() {
@@ -233,7 +240,21 @@ impl AmlVM {
                                 self.stream.length = old_length;
                                 self.top_level_node = old_tlr;
                             }
+                            Ok(Some(StackItem::MethodCall {
+                                ret_index,
+                                old_length,
+                                old_args,
+                                old_locals,
+                            })) => {
+                                serial_println!("Natrual end");
+                                self.stream.index = ret_index;
+                                self.stream.length = old_length;
+                                self.args = *old_args;
+                                self.local = *old_locals;
+                                self.stack.push_data(AmlData::Null);
+                            }
                             Ok(None) => break,
+
                             Ok(_) => Err(AmlStackFrame {
                                 error: AmlError::StackCorruption,
                                 stream: self.stream.clone(),
@@ -264,8 +285,21 @@ impl AmlVM {
     #[inline]
     pub fn resolve_stack_item(&mut self, item: StackItem) -> Result<(), AmlError> {
         match item {
-            StackItem::NamePath => self.resolve_path(),
+            StackItem::Byte => {
+                let data = AmlData::Interger(u64::from(load_byte(self)?));
+                self.stack.push_data(data)
+            }
+            StackItem::NameString => {
+                let data = AmlData::NameString(NameString::exec(self)?);
+                self.stack.push_data(data)
+            }
+            StackItem::DataRefObj => {
+                let op = self.next_opcode()?;
+                self.parse_data_ref_object(op)
+            }
+            StackItem::SimpleName => self.resolve_simple_name(),
             StackItem::SuperName => self.resolve_super_name(),
+            StackItem::Target => self.resolve_target(),
             StackItem::TermArg => self.exec_term_arg(),
             StackItem::ResOp(index) => self.resolve_op(index),
             StackItem::Pkglen => {
@@ -284,11 +318,25 @@ impl AmlVM {
 
     pub fn resolve_op(&mut self, op_index: usize) -> Result<(), AmlError> {
         match self.op_at(op_index)? {
+            AmlOp::NameOp => {
+                let name = self.pop_data()?;
+                if let AmlData::NameString(name) = name {
+                    let data = self.pop_data()?;
+                    match self.push_node(name, data) {
+                        Ok(_) => (),
+                        Err(e) => Err(e)?,
+                    }
+                } else {
+                    Err(AmlError::InvalidAmlData(name, "ResolveOp"))?;
+                }
+            }
+
             AmlOp::StoreOp => {
                 let data = self.pop_data()?;
                 let name_res = self.pop_data()?;
                 self.set_node(name_res, data)?;
             }
+
             AmlOp::WhileOp => {
                 let len = self.pop_data()?;
                 let data = self.pop_data()?.interger()?;
@@ -303,17 +351,22 @@ impl AmlVM {
                     self.stream.index += len.interger()? as usize;
                 }
             }
+
             AmlOp::ReturnOp => {
                 let data = self.pop_data()?;
-
+                serial_println!("returing : {:?}", data);
                 loop {
                     match self.stack.pop()? {
                         Some(StackItem::MethodCall {
                             ret_index,
                             old_length,
+                            old_args,
+                            old_locals,
                         }) => {
                             self.stream.index = ret_index;
                             self.stream.length = old_length;
+                            self.args = *old_args;
+                            self.local = *old_locals;
                             break;
                         }
                         Some(_) => (),
@@ -323,6 +376,7 @@ impl AmlVM {
                 self.stack.push(StackItem::Data(data))?;
                 self.stack.push(StackItem::Return)?;
             }
+
             AmlOp::IfOp => {
                 let len = self.pop_data()?.interger()? as usize;
                 let pkg_len = Self::pkg_len_bytes(len);
@@ -355,6 +409,7 @@ impl AmlVM {
                     }
                 }
             }
+
             AmlOp::DecrementOp => {
                 let name_res = self.pop_data()?;
                 let data = self.mutate_node(name_res, |d| {
@@ -362,6 +417,7 @@ impl AmlVM {
                 })?;
                 self.stack.push_data(data)?;
             }
+
             AmlOp::IncrementOp => {
                 let name_res = self.pop_data()?;
                 let data = self.mutate_node(name_res, |d| {
@@ -369,17 +425,96 @@ impl AmlVM {
                 })?;
                 self.stack.push_data(data)?;
             }
+
+            //Method invokation
+            AmlOp::NameChar | AmlOp::Rootchar | AmlOp::ParentPrefixChar => {
+                if let AmlData::ObjRef(method_ref) = self.pop_data()? {
+                    let node = self.get_node(method_ref)?;
+                    if let AmlData::Method(method) = node.data.clone() {
+                        method.invoke(self, &node.name.clone())?;
+                    } else {
+                        Err(AmlError::StackCorruption)?;
+                    }
+                } else {
+                    Err(AmlError::StackCorruption)?;
+                }
+            }
+
+            AmlOp::CopyObjectOp => {
+                let data = self.stack.pop_data()?;
+                let name_res = self.stack.pop_data()?;
+                self.set_node(name_res, data)?;
+            }
+            AmlOp::LnotOp => {
+                let int = self.stack.pop_data()?.interger()?;
+                if int != 0 {
+                    self.stack.push_data(AmlData::Interger(0))?;
+                } else {
+                    self.stack.push_data(AmlData::Interger(1))?;
+                }
+            }
+            AmlOp::AddOp => self.mut_interger(u64::wrapping_add)?,
+            AmlOp::SubtractOp => self.mut_interger(u64::wrapping_sub)?,
+            AmlOp::MultiplyOp => self.mut_interger(u64::wrapping_mul)?,
+            AmlOp::AndOp => self.mut_interger(BitAnd::<u64>::bitand)?,
+            AmlOp::OrOp => self.mut_interger(BitOr::<u64>::bitor)?,
+            AmlOp::XorOp => self.mut_interger(BitXor::<u64>::bitxor)?,
+            AmlOp::LandOp => self.cmp_interger(|a, b| *a != 0 && *b != 0)?,
+            AmlOp::LorOp => self.cmp_interger(|a, b| *a != 0 || *b != 0)?,
+            AmlOp::LequalOp => self.cmp_interger(u64::eq)?,
+            AmlOp::LgreaterOp => self.cmp_interger(u64::gt)?,
+            AmlOp::LLlessOp => self.cmp_interger(u64::lt)?,
             op => Err(AmlError::UnexpectedOp(op, "Resolve op"))?,
         }
         Ok(())
     }
 
     pub fn exec_term_obj(&mut self) -> Result<(), AmlError> {
-        match self.next_opcode()? {
+        let op = self.next_opcode()?;
+        serial_println!("OP : {:?}", op);
+        match op {
             AmlOp::ReturnOp => self.push_unresolved_op(&[StackItem::TermArg]),
+
+            AmlOp::NameOp => {
+                self.push_unresolved_op(&[StackItem::NameString, StackItem::DataRefObj])
+            }
+
+            AmlOp::ScopeOp => {
+                let start = self.stream.index;
+                let len = self.decode_pkg_length()?;
+                let node = self.resolve_name_string()?;
+                if node.is_null() {
+                    self.stream.index = start + len;
+                } else {
+                    self.stack.push(StackItem::Scope {
+                        old_length: self.stream.length,
+                        old_tlr: self.get_tlr(),
+                    })?;
+                    self.stream.length = start + len;
+                    self.top_level_node = node;
+                }
+                Ok(())
+            }
+
+            AmlOp::ContinueOp => {
+                while let Some(data) = self.stack.pop_scoped()? {
+                    //if the return if ret_index is higher then the current index then it is a if function
+                    if let StackItem::Conditional {
+                        ret_index,
+                        old_length,
+                    } = data
+                        && ret_index < self.stream.index
+                    {
+                        self.stream.index = ret_index;
+                        self.stream.length = old_length;
+                        break;
+                    }
+                }
+                Ok(())
+            }
             AmlOp::BreakOp => {
                 while let Some(data) = self.stack.pop_scoped()? {
-                    //if the return index is higher then the current index then it is a if function
+                    //if the return if ret_index is higher then the current index then it is a if function
                     if let StackItem::Conditional {
                         ret_index,
                         old_length,
@@ -397,8 +532,11 @@ impl AmlVM {
                 }
                 Ok(())
             }
+
             AmlOp::MethodOp => {
-                let end = self.stream().index() + self.decode_pkg_length()?;
+                let start = self.stream.index();
+                let length = self.decode_pkg_length()?;
+                let end = start + length;
                 let name = NameString::exec(self)?;
                 let method_flags = load_byte(self)?;
                 let data = self
@@ -410,6 +548,7 @@ impl AmlVM {
                 self.stream().index = end;
                 Ok(())
             }
+
             AmlOp::WhileOp | AmlOp::IfOp => {
                 self.push_unresolved_op(&[StackItem::Pkglen, StackItem::TermArg])
             }
@@ -417,38 +556,148 @@ impl AmlVM {
         }
     }
 
-    pub fn resolve_path(&mut self) -> Result<(), AmlError> {
+    pub fn parse_expr_opcode(&mut self, op: AmlOp) -> Result<(), AmlError> {
+        use StackItem::{SimpleName, SuperName, Target, TermArg};
+        match op {
+            AmlOp::AndOp
+            | AmlOp::XorOp
+            | AmlOp::OrOp
+            | AmlOp::AddOp
+            | AmlOp::SubtractOp
+            | AmlOp::MultiplyOp => self.push_unresolved_op(&[TermArg, TermArg, Target]),
+            AmlOp::LandOp
+            | AmlOp::LorOp
+            | AmlOp::LequalOp
+            | AmlOp::LgreaterOp
+            | AmlOp::LLlessOp => self.push_unresolved_op(&[TermArg, TermArg]),
+            AmlOp::LnotOp => self.push_unresolved_op(&[TermArg]),
+            AmlOp::DecrementOp | AmlOp::IncrementOp => self.push_unresolved_op(&[SuperName]),
+            AmlOp::StoreOp => self.push_unresolved_op(&[TermArg, SuperName]),
+            AmlOp::CopyObjectOp => self.push_unresolved_op(&[TermArg, SimpleName]),
+            AmlOp::NameChar | AmlOp::Rootchar | AmlOp::ParentPrefixChar => {
+                self.stream.index -= 1;
+
+                let start = self.stream.index;
+                let method_ref = self.resolve_name_string()?;
+                let node = self.get_node(method_ref)?;
+
+                match node.data {
+                    AmlData::Method(Method { arg_c, .. }) => {
+                        for _ in 0..arg_c {
+                            self.stack.push(StackItem::TermArg)?;
+                        }
+                        self.stack
+                            .push(StackItem::Data(AmlData::ObjRef(method_ref)))?;
+                        self.stack.push(StackItem::UnreselvedOp {
+                            op_index: start,
+                            arg_c: arg_c + 1,
+                            arg_s: 1,
+                        })
+                    }
+                    _ => self.stack.push_data(node.data.clone()),
+                }
+            }
+            op => Err(AmlError::UnexpectedOp(op, "ExprParse")),
+        }
+    }
+
+    pub fn resolve_computational_data(&mut self, op: AmlOp) -> Result<(), AmlError> {
+        let res = match op {
+            AmlOp::ZeroOp => AmlData::Interger(0x0),
+            AmlOp::OneOp => AmlData::Interger(0x1),
+            AmlOp::ByteOp => AmlData::Interger(u64::from(load_byte(self)?)),
+            AmlOp::WordOp => AmlData::Interger(u64::from(load_word(self)?)),
+            AmlOp::DWordOp => AmlData::Interger(u64::from(load_dword(self)?)),
+            AmlOp::QWordOp => AmlData::Interger(load_qword(self)?),
+            AmlOp::StringOp => AmlData::String(AmlString::exec(self)?),
+            AmlOp::OnesOp => AmlData::Interger(0xFF),
+            // AmlOp::BufferOp => AmlData::Buffer(Buffer::load(self)?),
+            AmlOp::ExtOpPrefix => {
+                let op = self.next_ext_opcode()?;
+                return self.resolve_computational_data_ext(op);
+            }
+
+            op => Err(AmlError::UnexpectedOp(op, "ComputationalData"))?,
+        };
+        self.stack.push_data(res)
+    }
+
+    pub fn resolve_path(&mut self, start_obj: ObjRef) -> Result<ObjRef, AmlError> {
+        if start_obj.is_null() {
+            return Ok(ObjRef::null());
+        }
+
         let opcode = self.peek_opcode()?;
-        let obj_ref = match opcode {
+        match opcode {
             AmlOp::ZeroOp => {
                 self.next()?;
-                self.get_tlr()
+                Ok(start_obj)
             }
             AmlOp::DualNameOp => {
                 self.next()?;
                 let name = NameSeg::exec(self)?;
-                let child = self.get_tln()?.seek_scope(self, &name)?;
+                let child = self.get_node(start_obj)?.seek_scope(self, &name)?;
+                if child.is_null() {
+                    NameSeg::exec(self)?;
+                    return Ok(ObjRef::null());
+                }
                 let name = NameSeg::exec(self)?;
-                self.get_node(child)?.find_child(self, &name)?
+                Ok(self.get_node(child)?.find_child(self, &name)?)
             }
             AmlOp::MultiNameOp => {
                 self.next()?;
                 let seg_count = self.next()?;
                 let first_name = NameSeg::exec(self)?;
-                let mut node = self.get_tln()?.seek_scope(self, &first_name)?;
+
+                let mut node = self.get_node(start_obj)?.seek_scope(self, &first_name)?;
                 for _ in 1..seg_count {
-                    let name = NameSeg::exec(self)?;
-                    node = self.get_node(node)?.find_child(self, &name)?;
+                    if !node.is_null() {
+                        let name = NameSeg::exec(self)?;
+                        node = self.get_node(node)?.find_child(self, &name)?;
+                    }
                 }
-                node
+                Ok(node)
             }
-            b if matches!(b as u8, b'A'..=b'Z' | b'_') => {
+            AmlOp::NameChar => {
                 let name = NameSeg::exec(self)?;
-                self.get_tln()?.seek_scope(self, &name)?
+
+                Ok(self.get_tln()?.seek_scope(self, &name)?)
             }
             op => Err(AmlError::UnexpectedOp(op, "NamePath"))?,
-        };
-        self.stack.push_data(AmlData::ObjRef(obj_ref))
+        }
+    }
+
+    ///Resolves the name path and returns the refrence back.
+    pub fn resolve_name_string(&mut self) -> Result<ObjRef, AmlError> {
+        let mut depth = 0;
+        loop {
+            match self.peek_opcode()? {
+                AmlOp::ParentPrefixChar => {
+                    depth += 1;
+                    self.next()?;
+                }
+                AmlOp::Rootchar => {
+                    self.next()?;
+                    let mut node = self.get_tlr();
+                    while let Some(parent) = self.get_node(node)?.parent {
+                        node = parent;
+                    }
+                    return self.resolve_path(node);
+                }
+                AmlOp::DualNameOp | AmlOp::MultiNameOp | AmlOp::NameChar => break,
+                op => Err(AmlError::UnexpectedOp(op, "Resolve name string"))?,
+            }
+        }
+        let mut node = self.get_tlr();
+        for _ in 0..depth {
+            if let Some(obj_ref) = self.get_node(node)?.parent {
+                node = obj_ref;
+            } else {
+                break;
+            }
+        }
+
+        self.resolve_path(node)
     }
 
     pub fn resolve_simple_name(&mut self) -> Result<(), AmlError> {
@@ -475,7 +724,10 @@ impl AmlVM {
                 let local = LocalObj::exec(self)?;
                 AmlData::Local(local)
             }
-            _ => return self.resolve_path(),
+            _ => {
+                let obj_ref = self.resolve_name_string()?;
+                return self.stack.push_data(AmlData::ObjRef(obj_ref));
+            }
         };
 
         self.stack.push_data(res)
@@ -505,7 +757,10 @@ impl AmlVM {
     pub fn resolve_target(&mut self) -> Result<(), AmlError> {
         let op = self.peek_opcode()?;
         let res = match op {
-            AmlOp::ZeroOp => AmlData::Null,
+            AmlOp::ZeroOp => {
+                self.next()?;
+                AmlData::Null
+            }
             _ => return self.resolve_super_name(),
         };
         self.stack.push_data(res)
@@ -517,12 +772,29 @@ impl AmlVM {
             AmlData::Arg(arg) => self.get_arg(arg)?,
             AmlData::Local(local) => self.get_local(local)?,
             AmlData::Debug => Err(AmlError::MutDebugObj)?,
-            AmlData::Index(obj_ref, index) => {
+            AmlData::Index(_obj_ref, _index) => {
                 todo!();
             }
             AmlData::Null => &mut self.get_tln_mut()?.data,
             _ => Err(AmlError::NullObj)?,
         })
+    }
+
+    fn mut_interger<F: FnOnce(u64, u64) -> u64>(&mut self, f: F) -> Result<(), AmlError> {
+        let rhs = self.pop_data()?.interger()?;
+        let lhs = self.pop_data()?.interger()?;
+        let name_res = self.pop_data()?;
+        self.set_node(name_res, AmlData::Interger(f(rhs, lhs)))
+    }
+
+    fn cmp_interger<F: FnOnce(&u64, &u64) -> bool>(&mut self, f: F) -> Result<(), AmlError> {
+        let lhs = self.pop_data()?.interger()?;
+        let rhs = self.pop_data()?.interger()?;
+        if f(&lhs, &rhs) {
+            self.stack.push_data(AmlData::Interger(1))
+        } else {
+            self.stack.push_data(AmlData::Interger(0))
+        }
     }
 
     #[inline]
@@ -548,6 +820,12 @@ impl AmlVM {
     }
 
     fn set_node(&mut self, name_res: AmlData, data: AmlData) -> Result<(), AmlError> {
+        //if name is null just push it onto the stack
+        if matches!(name_res, AmlData::Null) {
+            self.stack.push_data(data)?;
+            return Ok(());
+        }
+
         let old_data = match self.get_data_mut(name_res) {
             Ok(data) => data,
             Err(AmlError::MutDebugObj) => {
@@ -562,9 +840,8 @@ impl AmlVM {
     fn push_node(&mut self, name: NameString, data: AmlData) -> Result<ObjRef, AmlError> {
         // if no top level node set it to this node instead
         if let NameString::Rel(NamePath::NameSeg(name), 0) = name {
-            let obj_ref = self.heap.instert(NameNode::new(name, data));
-            let root = self.get_tln_mut()?;
-            root.append_child(obj_ref);
+            let root = self.get_tlr();
+            let obj_ref = self.append_to_node(root, NameNode::new(name, data))?;
             return Ok(obj_ref);
         }
 
@@ -603,24 +880,30 @@ impl AmlVM {
                     .ok_or(AmlError::NamedObjectNotFound(path.clone()))?;
                 for name in path {
                     node = self.get_node(node)?.find_child(self, name)?;
+                    if node.is_null() {
+                        break;
+                    }
                 }
                 (name, node)
             }
         };
 
-        self.append_to_node(node, NameNode::new(name.clone(), data))
+        if node.is_null() {
+            Ok(ObjRef::null())
+        } else {
+            self.append_to_node(node, NameNode::new(name.clone(), data))
+        }
     }
 
     /// Appends a child to a parent node making sure that the parent gets set correctly
     fn append_to_node(&mut self, parent: ObjRef, mut child: NameNode) -> Result<ObjRef, AmlError> {
         child.parent = Some(parent);
-
         {
             let parent = self
                 .heap
                 .get(parent)
                 .ok_or(AmlError::InvalidObjectRef(parent))?;
-            if parent.find_child(self, &child.name).is_ok() {
+            if parent.has_child(self, &child.name)? {
                 Err(AmlError::DuplicateName(child.name.clone()))?;
             }
         }
@@ -667,6 +950,7 @@ impl AmlVM {
 
     pub fn exec_term_arg(&mut self) -> Result<(), AmlError> {
         let op = self.next_opcode()?;
+
         match self.resolve_computational_data(op) {
             Ok(()) => return Ok(()),
             Err(AmlError::UnexpectedOp(_, _) | AmlError::UnexpectedExtOp(_, _)) => (),
@@ -678,12 +962,12 @@ impl AmlVM {
             Err(AmlError::UnexpectedOp(_, _) | AmlError::UnexpectedExtOp(_, _)) => (),
             e => return e,
         }
-        //
-        // match self.parse_data_object(op) {
-        //     Ok(_) => return Ok(()),
-        //     Err(AmlError::UnexpectedOp(_, _) | AmlError::UnexpectedExtOp(_, _)) => (),
-        //     e => return e,
-        // }
+
+        match self.parse_data_object(op) {
+            Ok(()) => return Ok(()),
+            Err(AmlError::UnexpectedOp(_, _) | AmlError::UnexpectedExtOp(_, _)) => (),
+            e => return e,
+        }
 
         match ArgObj::parse(op) {
             Ok(arg) => {
@@ -697,6 +981,7 @@ impl AmlVM {
 
         match LocalObj::parse(op) {
             Ok(local) => {
+                serial_println!("call! : {:?}", op);
                 let local = self.get_local(local)?.clone();
                 self.stack.push_data(local)?;
                 return Ok(());
@@ -707,48 +992,9 @@ impl AmlVM {
 
         Err(AmlError::UnexpectedOp(op, "TermArg"))
     }
-    pub fn parse_expr_opcode_ext(&mut self, op: ExtOp) -> Result<AmlData, AmlError> {
-        match op {
-            op => Err(AmlError::UnexpectedExtOp(op, "ExprParse Ext")),
-        }
+    pub const fn parse_expr_opcode_ext(&mut self, op: ExtOp) -> Result<AmlData, AmlError> {
+        Err(AmlError::UnexpectedExtOp(op, "ExprParse Ext"))
     }
-
-    pub fn parse_expr_opcode(&mut self, op: AmlOp) -> Result<(), AmlError> {
-        use StackItem::{SuperName, Target, TermArg};
-        match op {
-            AmlOp::AndOp
-            | AmlOp::XorOp
-            | AmlOp::OrOp
-            | AmlOp::AddOp
-            | AmlOp::SubtractOp
-            | AmlOp::MultiplyOp => self.push_unresolved_op(&[TermArg, TermArg, Target]),
-            AmlOp::DecrementOp | AmlOp::IncrementOp => self.push_unresolved_op(&[SuperName]),
-            AmlOp::StoreOp => self.push_unresolved_op(&[TermArg, SuperName]),
-            op => Err(AmlError::UnexpectedOp(op, "ExprParse")),
-        }
-    }
-
-    pub fn resolve_computational_data(&mut self, op: AmlOp) -> Result<(), AmlError> {
-        let res = match op {
-            AmlOp::ZeroOp => AmlData::Interger(0x0),
-            AmlOp::OneOp => AmlData::Interger(0x1),
-            AmlOp::ByteOp => AmlData::Interger(u64::from(load_byte(self)?)),
-            AmlOp::WordOp => AmlData::Interger(u64::from(load_word(self)?)),
-            AmlOp::DWordOp => AmlData::Interger(u64::from(load_dword(self)?)),
-            AmlOp::QWordOp => AmlData::Interger(load_qword(self)?),
-            AmlOp::StringOp => AmlData::String(AmlString::exec(self)?),
-            AmlOp::OnesOp => AmlData::Interger(0xFF),
-            // AmlOp::BufferOp => AmlData::Buffer(Buffer::load(self)?),
-            AmlOp::ExtOpPrefix => {
-                let op = self.next_ext_opcode()?;
-                return self.resolve_computational_data_ext(op);
-            }
-
-            op => Err(AmlError::UnexpectedOp(op, "ComputationalData"))?,
-        };
-        self.stack.push_data(res)
-    }
-
     pub fn resolve_computational_data_ext(&mut self, op: ExtOp) -> Result<(), AmlError> {
         let res = match op {
             ExtOp::ReleaseOp => AmlData::Interger(u64::from(load_byte(self)?)),
@@ -757,23 +1003,21 @@ impl AmlVM {
         self.stack.push_data(res)
     }
 
-    // pub fn resolve_data_package(&mut self, op: ResOp) -> Result<(), AmlError> {
-    //     match self.stream().op_at() {}
-    // }
-    //
-    // #[inline]
-    // pub fn parse_data_object(&mut self, op: AmlOp) -> Result<(), AmlError> {
-    //     match op {
-    //         AmlOp::PackageOp => AmlData::Package(Package::load(self)?),
-    //         AmlOp::VarPackageOp => AmlData::Package(Package::var_load(self)?),
-    //         _ => self.resolve_computational_data(op),
-    //     }
-    // }
+    #[inline]
+    pub fn parse_data_object(&mut self, op: AmlOp) -> Result<(), AmlError> {
+        match op {
+            AmlOp::PackageOp => self.push_unresolved_op(&[StackItem::Pkglen, StackItem::Byte]),
+            AmlOp::VarPackageOp => {
+                self.push_unresolved_op(&[StackItem::Pkglen, StackItem::TermArg])
+            }
+            _ => self.resolve_computational_data(op),
+        }
+    }
 
-    // #[inline]
-    // pub fn parse_data_ref_object(&mut self, op: AmlOp) -> Result<(), AmlError> {
-    //     self.parse_data_object(op)
-    // }
+    #[inline]
+    pub fn parse_data_ref_object(&mut self, op: AmlOp) -> Result<(), AmlError> {
+        self.parse_data_object(op)
+    }
 
     pub fn get_or_exec(
         &mut self,
@@ -913,6 +1157,7 @@ impl AmlVM {
     }
 
     /// Gets a obj refrence to current top level node from the context
+    #[must_use]
     pub const fn get_tlr(&self) -> ObjRef {
         self.top_level_node
     }
@@ -933,6 +1178,7 @@ impl AmlVM {
 
     ///Pushes a unresolved op to the stack
     fn push_unresolved_op(&mut self, args: &[StackItem]) -> Result<(), AmlError> {
+        serial_println!("Args : {:?}", args);
         // -1 due to the stream index always sitting at the next item to be read.
         self.push_unresolved_op_at(self.stream.index - 1, args)
     }
@@ -942,7 +1188,7 @@ impl AmlVM {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Buffer {
     buffer: Box<[u8]>,
 }

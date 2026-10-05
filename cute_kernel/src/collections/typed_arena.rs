@@ -5,14 +5,28 @@ use core::{
 
 use alloc::vec::Vec;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypedArenaAllocation(Option<NonZeroUsize>);
 
 impl TypedArenaAllocation {
+    #[must_use]
     pub fn from_raw_usize(value: usize) -> Option<Self> {
         Some(Self(Some(NonZeroUsize::try_from(value).ok()?)))
     }
 
+    #[must_use]
+    #[inline]
+    pub const fn null() -> Self {
+        Self(None)
+    }
+
+    #[inline]
+    #[must_use]
+    pub const fn is_null(&self) -> bool {
+        self.0.is_none()
+    }
+
+    #[must_use]
     pub fn usize(&self) -> usize {
         if let Some(index) = self.0 {
             index.into()
@@ -37,6 +51,7 @@ impl<T> Default for TypedArena<T> {
 
 impl<T> TypedArena<T> {
     #[inline]
+    #[must_use]
     pub const fn new() -> Self {
         Self { heap: Vec::new() }
     }
@@ -56,6 +71,7 @@ impl<T> TypedArena<T> {
 
     //Gets a refence to the data in the arena
     #[inline]
+    #[must_use]
     pub fn get(&self, alloc: TypedArenaAllocation) -> Option<&T> {
         self.heap.get(alloc.0?.get() - 1usize)
     }

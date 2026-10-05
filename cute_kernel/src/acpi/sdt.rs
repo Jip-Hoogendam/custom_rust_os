@@ -213,7 +213,7 @@ pub struct SDTIter<'a, 'b> {
 }
 
 /// A iterator of System discriptor tables.
-impl<'a, 'b> Iterator for SDTIter<'a, 'b> {
+impl<'a> Iterator for SDTIter<'a, '_> {
     type Item = &'a SDTables;
 
     fn next(&mut self) -> Option<Self::Item> {
