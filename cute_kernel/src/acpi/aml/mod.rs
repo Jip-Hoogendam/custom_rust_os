@@ -9,6 +9,7 @@ use crate::acpi::aml::{
 use core::{error::Error, fmt::Display};
 
 pub const AML_RECURSION_LIMIT: usize = 10;
+pub const LOCAL_COUNT: usize = 8;
 
 pub mod data_objects;
 pub mod executor;
@@ -52,6 +53,7 @@ pub enum AmlError {
     DuplicateName(NameSeg),
 
     Return,
+    NotInMethod,
 
     StackCorruption,
     StackOverflow,
@@ -97,6 +99,7 @@ impl Display for AmlError {
 
                 Self::StackCorruption => String::from("StackCorruption: AmlVM stack got corrupted somehow"),
                 Self::StackOverflow => String::from("StackOverflow: AmlVM stack overflow"),
+                Self::NotInMethod => String::from("NotInMethod: AmlVM tried to access local or args outside of a function call"),
 
                 Self::Break => String::from("Break: AmlVM executed break not in a loop"),
                 Self::TermEnd => String::from("TermEnd: AmlVM finised correctly"),

@@ -27,8 +27,8 @@ pub enum StackItem {
     MethodCall {
         ret_index: usize,
         old_length: usize,
-        old_args: Box<[AmlData; 7]>,
-        old_locals: Box<[AmlData; 8]>,
+        old_method_ptr: usize,
+        arg_c: u8,
     },
 
     Conditional {
@@ -56,6 +56,10 @@ pub struct AmlStack {
 }
 
 impl AmlStack {
+    pub const fn index(&self) -> usize {
+        self.stack_ptr - 1
+    }
+
     pub fn new(size: usize) -> Self {
         Self {
             stack_ptr: 0,
@@ -175,6 +179,16 @@ impl AmlStack {
     pub fn peek(&mut self) -> Option<&mut StackItem> {
         let index = self.stack_ptr.checked_sub(1)?;
         self.stack.get_mut(index)
+    }
+
+    //Peeks at a given location
+    pub fn peek_at(&mut self, index: usize) -> Option<&mut StackItem> {
+        let index = index.checked_sub(1)?;
+
+        let data = self.stack.get_mut(index);
+
+        serial_println!("CALL : {:?}", data);
+        data
     }
 
     pub fn op_arg_push(&mut self, op_index: usize, args: &[StackItem]) -> Result<(), AmlError> {

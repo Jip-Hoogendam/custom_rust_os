@@ -57,32 +57,21 @@ impl Method {
     }
 
     pub fn invoke(&self, ctx: &mut AmlVM, fn_name: &NameSeg) -> Result<(), AmlError> {
-        let mut set = 0;
-        let mut args = [const { AmlData::Null }; 7];
-        for i in 0..self.arg_c {
-            *args
-                .get_mut(usize::from(i))
-                .ok_or(AmlError::InvalidArgCount(i as usize, self.arg_c))? = ctx.pop_data()?;
-            set += 1;
-        }
-
-        if set < self.arg_c {
-            Err(AmlError::InvalidArgCount(set as usize, self.arg_c))?;
-        }
-
-        ctx.swp_args(&mut args);
-        let mut locals = [const { AmlData::Null }; 8];
-        ctx.swp_locals(&mut locals);
-
         let index = ctx.stream().index;
         let length = ctx.stream().length;
+
+        //push locals
+        for _ in 0..8 {
+            ctx.stack.push(StackItem::Data(AmlData::Null))?;
+        }
 
         ctx.stack.push(StackItem::MethodCall {
             ret_index: index,
             old_length: length,
-            old_args: Box::new(args),
-            old_locals: Box::new(locals),
+            old_method_ptr: ctx.method_ptr,
+            arg_c: self.arg_c,
         })?;
+        ctx.method_ptr = ctx.stack.index();
 
         *ctx.stream() = self.data.clone();
         Ok(())
@@ -92,23 +81,27 @@ impl Method {
     pub fn call(
         &self,
         ctx: &mut AmlVM,
-        args: &mut [AmlData; 7],
+        args: &[AmlData],
         fn_name: &NameSeg,
     ) -> Result<AmlData, AmlError> {
-        let mut locals = [const { AmlData::Null }; 8];
-        ctx.swp_args(args);
-        ctx.swp_locals(&mut locals);
-
         let mut stream_clone = self.data.clone();
         ctx.swp_byte_stream(&mut stream_clone);
 
-        ctx.stack.push(StackItem::Eval(AmlData::Null));
+        ctx.stack.push(StackItem::Eval(AmlData::Null))?;
+        for arg in args {
+            ctx.stack.push(StackItem::Data(arg.clone()))?;
+        }
+        //push locals
+        for _ in 0..8 {
+            ctx.stack.push(StackItem::Data(AmlData::Null))?;
+        }
         ctx.stack.push(StackItem::MethodCall {
             ret_index: stream_clone.index,
             old_length: stream_clone.length,
-            old_args: Box::new(args.clone()),
-            old_locals: Box::new(locals.clone()),
+            old_method_ptr: ctx.method_ptr,
+            arg_c: self.arg_c,
         })?;
+        ctx.method_ptr = ctx.stack.index();
 
         match ctx.exec() {
             Ok(()) => (),
@@ -117,11 +110,12 @@ impl Method {
 
         ctx.swp_byte_stream(&mut stream_clone);
 
-        ctx.swp_locals(&mut locals);
-        ctx.swp_args(args);
         let ret = match ctx.stack.pop()? {
-            Some(StackItem::Eval(data)) => data,
-            Some(_) => Err(AmlError::StackCorruption)?,
+            Some(StackItem::Eval(data)) => {
+                serial_println!("DATA: FOUND : {:?}", data);
+                data
+            }
+            Some(data) => Err(AmlError::StackCorruption)?,
             None => AmlData::Null,
         };
         Ok(ret)

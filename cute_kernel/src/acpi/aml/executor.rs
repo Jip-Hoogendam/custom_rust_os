@@ -9,7 +9,7 @@ use super::stack_items::StackItem;
 
 use crate::{
     acpi::aml::{
-        AmlError, ByteCodeInstruction,
+        AmlError, ByteCodeInstruction, LOCAL_COUNT,
         data_objects::{AmlString, load_byte, load_dword, load_qword, load_word},
         named_objects::{NamePath, NameSeg, NameString},
         namenode::{AmlData, Method, NameNode},
@@ -171,8 +171,7 @@ pub struct AmlVM {
     top_level_node: ObjRef,
     pub stack: AmlStack,
     heap: TypedArena<NameNode>,
-    args: [AmlData; 7],
-    local: [AmlData; 8],
+    pub method_ptr: usize,
 }
 
 impl AmlVM {
@@ -192,14 +191,7 @@ impl AmlVM {
             heap,
             top_level_node: root_ref,
             stack: AmlStack::new(stack_size),
-            args: [
-                AmlData::default(),AmlData::default(),AmlData::default(),AmlData::default(),
-                AmlData::default(),AmlData::default(),AmlData::default(),
-            ],
-            local: [
-                AmlData::default(),AmlData::default(),AmlData::default(),AmlData::default(),
-                AmlData::default(),AmlData::default(),AmlData::default(),AmlData::default(),
-            ],
+            method_ptr: 0,
         };
 
         new.append_to_node(root_ref, NameNode::new(NameSeg::from_bytes(*b"_TZ_").unwrap(), AmlData::Null)).unwrap();
@@ -243,18 +235,20 @@ impl AmlVM {
                             Ok(Some(StackItem::MethodCall {
                                 ret_index,
                                 old_length,
-                                old_args,
-                                old_locals,
+                                old_method_ptr,
+                                arg_c,
                             })) => {
                                 serial_println!("Natrual end");
                                 self.stream.index = ret_index;
                                 self.stream.length = old_length;
-                                self.args = *old_args;
-                                self.local = *old_locals;
+                                self.method_ptr = old_method_ptr;
+                                //pop locals and args
+                                for _ in 0..(8 + arg_c) {
+                                    self.stack.pop();
+                                }
                                 self.stack.push_data(AmlData::Null);
                             }
                             Ok(None) => break,
-
                             Ok(_) => Err(AmlStackFrame {
                                 error: AmlError::StackCorruption,
                                 stream: self.stream.clone(),
@@ -360,13 +354,16 @@ impl AmlVM {
                         Some(StackItem::MethodCall {
                             ret_index,
                             old_length,
-                            old_args,
-                            old_locals,
+                            old_method_ptr,
+                            arg_c,
                         }) => {
                             self.stream.index = ret_index;
                             self.stream.length = old_length;
-                            self.args = *old_args;
-                            self.local = *old_locals;
+                            self.method_ptr = old_method_ptr;
+                            //pop locals and args
+                            for _ in 0..(8 + arg_c) {
+                                self.stack.pop().unwrap();
+                            }
                             break;
                         }
                         Some(_) => (),
@@ -574,6 +571,8 @@ impl AmlVM {
             AmlOp::DecrementOp | AmlOp::IncrementOp => self.push_unresolved_op(&[SuperName]),
             AmlOp::StoreOp => self.push_unresolved_op(&[TermArg, SuperName]),
             AmlOp::CopyObjectOp => self.push_unresolved_op(&[TermArg, SimpleName]),
+
+            //Metod call
             AmlOp::NameChar | AmlOp::Rootchar | AmlOp::ParentPrefixChar => {
                 self.stream.index -= 1;
 
@@ -981,7 +980,6 @@ impl AmlVM {
 
         match LocalObj::parse(op) {
             Ok(local) => {
-                serial_println!("call! : {:?}", op);
                 let local = self.get_local(local)?.clone();
                 self.stack.push_data(local)?;
                 return Ok(());
@@ -1036,12 +1034,7 @@ impl AmlVM {
                 Err(AmlError::InvalidArgCount(call_args.len(), method.arg_c))?;
             }
 
-            let mut args = [const { AmlData::Null }; 7];
-            for i in 0..core::cmp::min(call_args.len(), args.len()) {
-                args[i] = call_args[i].clone();
-            }
-
-            method.call(self, &mut args, name)
+            method.call(self, call_args, name)
         } else {
             Ok(data)
         }
@@ -1077,14 +1070,6 @@ impl AmlVM {
         }
     }
 
-    #[inline]
-    pub const fn swp_args(&mut self, new_args: &mut [AmlData; 7]) {
-        core::mem::swap(&mut self.args, new_args);
-    }
-    #[inline]
-    pub const fn swp_locals(&mut self, locals: &mut [AmlData; 8]) {
-        core::mem::swap(&mut self.local, locals);
-    }
     #[inline]
     pub const fn swp_byte_stream(&mut self, stream: &mut ByteStream) {
         core::mem::swap(&mut self.stream, stream);
@@ -1146,14 +1131,37 @@ impl AmlVM {
     }
 
     fn get_local(&mut self, local: LocalObj) -> Result<&mut AmlData, AmlError> {
-        self.local
-            .get_mut(local.0 as usize)
-            .ok_or(AmlError::InvalidLocalIndex(local.0))
+        if self.method_ptr == 0 {
+            Err(AmlError::NotInMethod)
+        } else {
+            self.stack
+                .peek_at(self.method_ptr - local.0 as usize - 1)
+                .map(|stack_item| match stack_item {
+                    StackItem::Data(data) => Ok(data),
+                    _ => Err(AmlError::StackCorruption),
+                })
+                .ok_or(AmlError::StackCorruption)?
+        }
     }
     fn get_arg(&mut self, arg: ArgObj) -> Result<&mut AmlData, AmlError> {
-        self.args
-            .get_mut(arg.0 as usize)
-            .ok_or(AmlError::InvalidLocalIndex(arg.0))
+        if self.method_ptr == 0 {
+            Err(AmlError::NotInMethod)
+        } else {
+            match self.stack.peek_at(self.method_ptr) {
+                Some(StackItem::MethodCall { arg_c, .. }) if arg.0 > *arg_c => {
+                    Err(AmlError::InvalidArgIndex(arg.0))?;
+                }
+                _ => (),
+            }
+
+            self.stack
+                .peek_at(self.method_ptr - LOCAL_COUNT - arg.0 as usize)
+                .map(|stack_item| match stack_item {
+                    StackItem::Data(data) => Ok(data),
+                    _ => Err(AmlError::StackCorruption),
+                })
+                .ok_or(AmlError::StackCorruption)?
+        }
     }
 
     /// Gets a obj refrence to current top level node from the context
