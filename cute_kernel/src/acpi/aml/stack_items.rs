@@ -181,14 +181,15 @@ impl AmlStack {
         self.stack.get_mut(index)
     }
 
-    //Peeks at a given location
-    pub fn peek_at(&mut self, index: usize) -> Option<&mut StackItem> {
+    pub fn peek_at(&self, index: usize) -> Option<&StackItem> {
         let index = index.checked_sub(1)?;
+        self.stack.get(index)
+    }
 
-        let data = self.stack.get_mut(index);
-
-        serial_println!("CALL : {:?}", data);
-        data
+    //Peeks at a given location
+    pub fn peek_at_mut(&mut self, index: usize) -> Option<&mut StackItem> {
+        let index = index.checked_sub(1)?;
+        self.stack.get_mut(index)
     }
 
     pub fn op_arg_push(&mut self, op_index: usize, args: &[StackItem]) -> Result<(), AmlError> {

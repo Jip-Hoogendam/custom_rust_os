@@ -311,6 +311,7 @@ impl AmlVM {
     }
 
     pub fn resolve_op(&mut self, op_index: usize) -> Result<(), AmlError> {
+        serial_println!("op : {:?}", self.op_at(op_index));
         match self.op_at(op_index)? {
             AmlOp::NameOp => {
                 let name = self.pop_data()?;
@@ -327,27 +328,29 @@ impl AmlVM {
 
             AmlOp::StoreOp => {
                 let data = self.pop_data()?;
-                let name_res = self.pop_data()?;
-                self.set_node(name_res, data)?;
+                let mut name_res = self.pop_data()?;
+                name_res.mutate(data, self)?;
             }
 
             AmlOp::WhileOp => {
                 let len = self.pop_data()?;
-                let data = self.pop_data()?.interger()?;
+                let data = self.pop_data()?.interger(self)?;
                 if data != 0 {
                     self.push_unresolved_op_at(op_index, &[StackItem::Pkglen, StackItem::TermArg])?;
                     self.stack.push(StackItem::Conditional {
                         ret_index: op_index + 1,
                         old_length: self.stream.length,
                     })?;
-                    self.stream.length = op_index + len.interger()? as usize + 1;
+                    self.stream.length = op_index + len.interger(self)? as usize + 1;
                 } else {
-                    self.stream.index += len.interger()? as usize;
+                    self.stream.index += len.interger(self)? as usize;
                 }
             }
 
             AmlOp::ReturnOp => {
+                //Have to deref in case it is a local value
                 let data = self.pop_data()?;
+                let data = data.resolve_locals(self)?.clone();
                 serial_println!("returing : {:?}", data);
                 loop {
                     match self.stack.pop()? {
@@ -362,7 +365,7 @@ impl AmlVM {
                             self.method_ptr = old_method_ptr;
                             //pop locals and args
                             for _ in 0..(8 + arg_c) {
-                                self.stack.pop().unwrap();
+                                self.stack.pop()?;
                             }
                             break;
                         }
@@ -375,13 +378,13 @@ impl AmlVM {
             }
 
             AmlOp::IfOp => {
-                let len = self.pop_data()?.interger()? as usize;
+                let len = self.pop_data()?.interger(self)? as usize;
                 let pkg_len = Self::pkg_len_bytes(len);
 
                 let mut orgiginal_index = self.stream.index;
                 self.stream.index = op_index + len + pkg_len;
 
-                let data = self.pop_data()?.interger()?;
+                let data = self.pop_data()?.interger(self)?;
                 if data != 0 {
                     //true
 
@@ -408,19 +411,17 @@ impl AmlVM {
             }
 
             AmlOp::DecrementOp => {
-                let name_res = self.pop_data()?;
-                let data = self.mutate_node(name_res, |d| {
-                    Ok(AmlData::Interger(d.interger()?.wrapping_sub(1)))
-                })?;
-                self.stack.push_data(data)?;
+                let mut name_res = self.pop_data()?;
+                let int = name_res.interger(self)?.wrapping_sub(1);
+                name_res.mutate(AmlData::Interger(int), self);
+                self.stack.push_data(name_res.deref(self)?.clone())?;
             }
 
             AmlOp::IncrementOp => {
-                let name_res = self.pop_data()?;
-                let data = self.mutate_node(name_res, |d| {
-                    Ok(AmlData::Interger(d.interger()?.wrapping_add(1)))
-                })?;
-                self.stack.push_data(data)?;
+                let mut name_res = self.pop_data()?;
+                let int = name_res.interger(self)?.wrapping_add(1);
+                name_res.mutate(AmlData::Interger(int), self);
+                self.stack.push_data(name_res.deref(self)?.clone())?;
             }
 
             //Method invokation
@@ -437,13 +438,18 @@ impl AmlVM {
                 }
             }
 
+            AmlOp::RefOfOp => {
+                let data = self.stack.pop_data()?;
+                self.stack.push_data(data)?;
+            }
+
             AmlOp::CopyObjectOp => {
                 let data = self.stack.pop_data()?;
-                let name_res = self.stack.pop_data()?;
-                self.set_node(name_res, data)?;
+                let mut name_res = self.stack.pop_data()?;
+                name_res.mutate(data, self)?;
             }
             AmlOp::LnotOp => {
-                let int = self.stack.pop_data()?.interger()?;
+                let int = self.stack.pop_data()?.interger(self)?;
                 if int != 0 {
                     self.stack.push_data(AmlData::Interger(0))?;
                 } else {
@@ -471,7 +477,6 @@ impl AmlVM {
         serial_println!("OP : {:?}", op);
         match op {
             AmlOp::ReturnOp => self.push_unresolved_op(&[StackItem::TermArg]),
-
             AmlOp::NameOp => {
                 self.push_unresolved_op(&[StackItem::NameString, StackItem::DataRefObj])
             }
@@ -568,7 +573,9 @@ impl AmlVM {
             | AmlOp::LgreaterOp
             | AmlOp::LLlessOp => self.push_unresolved_op(&[TermArg, TermArg]),
             AmlOp::LnotOp => self.push_unresolved_op(&[TermArg]),
-            AmlOp::DecrementOp | AmlOp::IncrementOp => self.push_unresolved_op(&[SuperName]),
+            AmlOp::RefOfOp | AmlOp::DecrementOp | AmlOp::IncrementOp => {
+                self.push_unresolved_op(&[SuperName])
+            }
             AmlOp::StoreOp => self.push_unresolved_op(&[TermArg, SuperName]),
             AmlOp::CopyObjectOp => self.push_unresolved_op(&[TermArg, SimpleName]),
 
@@ -745,7 +752,8 @@ impl AmlVM {
                 }
             }
             AmlOp::RefOfOp => {
-                let raw_ref = self.pop_data()?.interger()?;
+                todo!("Ref op of super name is bad");
+                let raw_ref = self.pop_data()?.interger(self)?;
                 AmlData::ObjRef(ObjRef::from_raw_usize(raw_ref as usize).ok_or(AmlError::NullRef)?)
             }
             _ => return self.resolve_simple_name(),
@@ -765,75 +773,21 @@ impl AmlVM {
         self.stack.push_data(res)
     }
 
-    fn get_data_mut(&mut self, name_res: AmlData) -> Result<&mut AmlData, AmlError> {
-        Ok(match name_res {
-            AmlData::ObjRef(obj_ref) => &mut self.mut_node(obj_ref)?.data,
-            AmlData::Arg(arg) => self.get_arg(arg)?,
-            AmlData::Local(local) => self.get_local(local)?,
-            AmlData::Debug => Err(AmlError::MutDebugObj)?,
-            AmlData::Index(_obj_ref, _index) => {
-                todo!();
-            }
-            AmlData::Null => &mut self.get_tln_mut()?.data,
-            _ => Err(AmlError::NullObj)?,
-        })
-    }
-
     fn mut_interger<F: FnOnce(u64, u64) -> u64>(&mut self, f: F) -> Result<(), AmlError> {
-        let rhs = self.pop_data()?.interger()?;
-        let lhs = self.pop_data()?.interger()?;
-        let name_res = self.pop_data()?;
-        self.set_node(name_res, AmlData::Interger(f(rhs, lhs)))
+        let rhs = self.pop_data()?.interger(self)?;
+        let lhs = self.pop_data()?.interger(self)?;
+        let mut name_res = self.pop_data()?;
+        name_res.mutate(AmlData::Interger(f(rhs, lhs)), self)
     }
 
     fn cmp_interger<F: FnOnce(&u64, &u64) -> bool>(&mut self, f: F) -> Result<(), AmlError> {
-        let lhs = self.pop_data()?.interger()?;
-        let rhs = self.pop_data()?.interger()?;
+        let lhs = self.pop_data()?.interger(self)?;
+        let rhs = self.pop_data()?.interger(self)?;
         if f(&lhs, &rhs) {
             self.stack.push_data(AmlData::Interger(1))
         } else {
             self.stack.push_data(AmlData::Interger(0))
         }
-    }
-
-    #[inline]
-    fn mutate_node<F: FnOnce(&mut AmlData) -> Result<AmlData, AmlError>>(
-        &mut self,
-        name_res: AmlData,
-        f: F,
-    ) -> Result<AmlData, AmlError> {
-        let data = self.get_data_mut(name_res)?;
-        *data = f(data)?;
-        Ok(data.clone())
-    }
-
-    fn exec_node<F: FnOnce(&mut AmlData, AmlData) -> Result<AmlData, AmlError>>(
-        &mut self,
-        name_res: AmlData,
-        f: F,
-        input: AmlData,
-    ) -> Result<AmlData, AmlError> {
-        let data = self.get_data_mut(name_res)?;
-        *data = f(data, input)?;
-        Ok(data.clone())
-    }
-
-    fn set_node(&mut self, name_res: AmlData, data: AmlData) -> Result<(), AmlError> {
-        //if name is null just push it onto the stack
-        if matches!(name_res, AmlData::Null) {
-            self.stack.push_data(data)?;
-            return Ok(());
-        }
-
-        let old_data = match self.get_data_mut(name_res) {
-            Ok(data) => data,
-            Err(AmlError::MutDebugObj) => {
-                return Ok(());
-            }
-            Err(e) => Err(e)?,
-        };
-        *old_data = data;
-        Ok(())
     }
 
     fn push_node(&mut self, name: NameString, data: AmlData) -> Result<ObjRef, AmlError> {
@@ -970,8 +924,7 @@ impl AmlVM {
 
         match ArgObj::parse(op) {
             Ok(arg) => {
-                let arg = self.get_arg(arg)?.clone();
-                self.stack.push_data(arg)?;
+                self.stack.push_data(AmlData::Arg(arg))?;
                 return Ok(());
             }
             Err(AmlError::InvalidData(_, _)) => (),
@@ -980,8 +933,7 @@ impl AmlVM {
 
         match LocalObj::parse(op) {
             Ok(local) => {
-                let local = self.get_local(local)?.clone();
-                self.stack.push_data(local)?;
+                self.stack.push_data(AmlData::Local(local))?;
                 return Ok(());
             }
             Err(AmlError::InvalidData(_, _)) => (),
@@ -1130,20 +1082,37 @@ impl AmlVM {
             .ok_or(AmlError::InvalidObjectRef(obj_ref))
     }
 
-    fn get_local(&mut self, local: LocalObj) -> Result<&mut AmlData, AmlError> {
+    pub fn get_stack(&self, index: usize) -> Result<&AmlData, AmlError> {
+        self.stack
+            .peek_at(index)
+            .map(|stack_item| match stack_item {
+                StackItem::Data(data) => Ok(data),
+                _ => Err(AmlError::StackCorruption),
+            })
+            .ok_or(AmlError::StackCorruption)?
+    }
+
+    pub fn get_stack_mut(&mut self, index: usize) -> Result<&mut AmlData, AmlError> {
+        self.stack
+            .peek_at_mut(index)
+            .map(|stack_item| match stack_item {
+                StackItem::Data(data) => Ok(data),
+                _ => Err(AmlError::StackCorruption),
+            })
+            .ok_or(AmlError::StackCorruption)?
+    }
+
+    ///Returns a stack pointer to the given local
+    pub const fn get_local_ref(&self, local: LocalObj) -> Result<usize, AmlError> {
         if self.method_ptr == 0 {
             Err(AmlError::NotInMethod)
         } else {
-            self.stack
-                .peek_at(self.method_ptr - local.0 as usize - 1)
-                .map(|stack_item| match stack_item {
-                    StackItem::Data(data) => Ok(data),
-                    _ => Err(AmlError::StackCorruption),
-                })
-                .ok_or(AmlError::StackCorruption)?
+            Ok(self.method_ptr - local.0 as usize)
         }
     }
-    fn get_arg(&mut self, arg: ArgObj) -> Result<&mut AmlData, AmlError> {
+
+    ///Returns a stack pointer to the given arg
+    pub fn get_arg_ref(&self, arg: ArgObj) -> Result<usize, AmlError> {
         if self.method_ptr == 0 {
             Err(AmlError::NotInMethod)
         } else {
@@ -1154,13 +1123,7 @@ impl AmlVM {
                 _ => (),
             }
 
-            self.stack
-                .peek_at(self.method_ptr - LOCAL_COUNT - arg.0 as usize)
-                .map(|stack_item| match stack_item {
-                    StackItem::Data(data) => Ok(data),
-                    _ => Err(AmlError::StackCorruption),
-                })
-                .ok_or(AmlError::StackCorruption)?
+            Ok(self.method_ptr - LOCAL_COUNT - arg.0 as usize)
         }
     }
 

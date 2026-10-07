@@ -21,6 +21,18 @@ impl AmlString {
             }
         }
     }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, AmlError> {
+        let mut string = vec![];
+        for byte in bytes {
+            match byte {
+                0x00 => return Ok(Self(string.into_boxed_slice())),
+                char @ 0x01..0x7F => string.push(*char),
+                data => return Err(AmlError::InvalidData(*data, "AmlString")),
+            }
+        }
+        Ok(Self(string.into_boxed_slice()))
+    }
 }
 
 #[repr(u8)]
@@ -76,8 +88,8 @@ pub struct Package {
 
 impl Resolvable for Package {
     fn load(ctx: &mut AmlVM, start: usize) -> Result<Self, AmlError> {
-        let len = ctx.pop_data()?.interger()?;
-        let elements = ctx.pop_data()?.interger()?;
+        let len = ctx.pop_data()?.interger(ctx)?;
+        let elements = ctx.pop_data()?.interger(ctx)?;
         let strea_save = ctx.stream().index();
         ctx.stream().index = start;
         let elements = ctx.fn_for(
