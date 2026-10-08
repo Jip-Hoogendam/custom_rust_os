@@ -1,4 +1,4 @@
-use core::{ops::DerefMut, sync::atomic::AtomicBool};
+use core::{mem, ops::DerefMut, sync::atomic::AtomicBool, usize};
 
 use alloc::{boxed::Box, format, rc::Rc, vec::Vec};
 
@@ -16,10 +16,11 @@ use crate::{
 ///Node types that gets created or passed by the AML
 #[derive(Debug, Default, Clone)]
 pub enum AmlData {
-    Local(LocalObj),
-    Arg(ArgObj),
     ObjRef(ObjRef),
     StackRef(usize),
+    LocalRef(usize),
+    ArgRef(usize),
+
     Index(ObjRef, usize),
     Debug,
     Buffer(Buffer),
@@ -147,34 +148,100 @@ impl AmlData {
         }
     }
 
+    ///Takes in a refence and copies the data into the location
+    pub fn copy(&self, ctx: &mut AmlVM, new: AmlData) -> Result<(), AmlError> {
+        match self {
+            Self::LocalRef(stack_ptr) => {
+                let data = ctx.get_stack_mut(*stack_ptr)?;
+                *data = new;
+                Ok(())
+            }
+            Self::ArgRef(stack_ptr) => {
+                let data = ctx.get_stack_mut(*stack_ptr)?;
+                let data = match data {
+                    Self::StackRef(stack_ptr) => {
+                        let stack_ptr = *stack_ptr;
+                        ctx.get_stack_mut(stack_ptr)?
+                    }
+                    Self::ObjRef(obj_ref) => {
+                        let obj_ref = *obj_ref;
+                        &mut ctx.mut_node(obj_ref)?.data
+                    }
+                    data => data,
+                };
+                *data = new;
+                Ok(())
+            }
+            Self::ObjRef(obj_ref) => {
+                let data = ctx.mut_node(*obj_ref)?;
+                data.data = new;
+                Ok(())
+            }
+            _ => Err(AmlError::InvalidAmlData(self.clone(), "COPY")),
+        }
+    }
+
     ///Sets the new value without type conversions.
     pub fn set(&mut self, ctx: &mut AmlVM, new: AmlData) -> Result<(), AmlError> {
-        match self {
-            Self::Null => ctx.stack.push_data(new)?,
-            Self::Arg(arg) => {
-                let data = ctx.get_arg_ref(*arg)?;
-                let data = ctx.get_stack_mut(data)?;
-                let data_ref = match data {
+        let data = match self {
+            Self::Null => {
+                ctx.stack.push_data(new);
+                return Ok(());
+            }
+            Self::ArgRef(arg) => {
+                let data = ctx.get_stack_mut(*arg)?;
+                match data {
                     Self::StackRef(stack_ref) => {
-                        let ptr = stack_ref.clone();
+                        let ptr = *stack_ref;
                         ctx.get_stack_mut(ptr)?
                     }
                     Self::ObjRef(obj_ref) => {
-                        let obj_ref = obj_ref.clone();
+                        let obj_ref = *obj_ref;
                         &mut ctx.mut_node(obj_ref)?.data
                     }
-                    _ => data,
-                };
-                *data_ref = new;
-                return Ok(());
+                    _ => {
+                        *data = new;
+                        return Ok(());
+                    }
+                }
             }
-            Self::Local(local) => {
-                let data = ctx.get_local_ref(*local)?;
-                let data = ctx.get_stack_mut(data)?;
-                *data = new;
-                return Ok(());
+            Self::LocalRef(local) => {
+                let mut data = ctx.get_stack_mut(*local)?;
+                loop {
+                    data = match data {
+                        Self::StackRef(stack_ref) => {
+                            let ptr = *stack_ref;
+                            ctx.get_stack_mut(ptr)?
+                        }
+                        Self::ObjRef(obj_ref) => {
+                            let obj_ref = *obj_ref;
+                            &mut ctx.mut_node(obj_ref)?.data
+                        }
+                        Self::ArgRef(arg_ref) => {
+                            let arg_ref = *arg_ref;
+                            ctx.get_stack_mut(arg_ref)?
+                        }
+                        _ => {
+                            break data;
+                        }
+                    }
+                }
             }
-            data => *data = new,
+            Self::StackRef(stack_ref) => ctx.get_stack_mut(*stack_ref)?,
+            Self::ObjRef(obj_ref) => &mut ctx.mut_node(*obj_ref)?.data,
+            data => data,
+        };
+
+        serial_println!("Test call ! {:?} : {:?}", data, new);
+        match (data, new) {
+            (Self::String(str), Self::String(res_str)) => {
+                let src_str = res_str.0.borrow();
+                for (index, byte) in str.0.borrow_mut().iter_mut().enumerate() {
+                    *byte = src_str[index];
+                }
+            }
+            (Self::Interger(int), Self::Interger(new_int)) => *int = new_int,
+            (data, new) => *data = new,
         }
         Ok(())
     }
@@ -188,14 +255,8 @@ impl AmlData {
         'b: 'a,
     {
         match self {
-            Self::Arg(arg) => {
-                let data = ctx.get_arg_ref(*arg)?;
-                ctx.get_stack_mut(data)
-            }
-            Self::Local(local) => {
-                let data = ctx.get_local_ref(*local)?;
-                ctx.get_stack_mut(data)
-            }
+            Self::ArgRef(arg) => ctx.get_stack_mut(*arg),
+            Self::LocalRef(local) => ctx.get_stack_mut(*local),
             _ => Ok(self),
         }
     }
@@ -206,14 +267,8 @@ impl AmlData {
         'b: 'a,
     {
         match self {
-            Self::Arg(arg) => {
-                let data = ctx.get_arg_ref(*arg)?;
-                ctx.get_stack(data)
-            }
-            Self::Local(local) => {
-                let data = ctx.get_local_ref(*local)?;
-                ctx.get_stack(data)
-            }
+            Self::ArgRef(arg) => ctx.get_stack(*arg),
+            Self::LocalRef(local) => ctx.get_stack(*local),
             _ => Ok(self),
         }
     }
@@ -223,13 +278,13 @@ impl AmlData {
     pub fn interger(&self, ctx: &AmlVM) -> Result<u64, AmlError> {
         match self {
             Self::Interger(int) => Ok(*int),
-            r @ (Self::Arg(_) | Self::Local(_)) => r.resolve_locals(ctx)?.interger(ctx),
+            r @ (Self::ArgRef(_) | Self::LocalRef(_)) => r.resolve_locals(ctx)?.interger(ctx),
             Self::String(str)
-                if !str.0.is_empty()
-                    && matches!(str.0[0], b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') =>
+                if !str.0.borrow().is_empty()
+                    && matches!(str.0.borrow()[0], b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') =>
             {
                 let mut buffer = 0u64;
-                for (index, nibble) in str.0.iter().enumerate().take(16) {
+                for (index, nibble) in str.0.borrow().iter().enumerate().take(16) {
                     buffer |= match nibble {
                         d @ b'0'..=b'9' => u64::from(d - b'0') << (16 - index),
                         c @ b'a'..=b'f' => u64::from(c - b'a' + 10) << (16 - index),
@@ -240,6 +295,13 @@ impl AmlData {
                 Ok(buffer)
             }
 
+            Self::String(str) => {
+                let mut new_int = 0x0u64;
+                for (index, char) in str.0.borrow().iter().take(8).enumerate() {
+                    new_int |= u64::from(*char) << (index * 8);
+                }
+                Ok(new_int)
+            }
             data => Err(AmlError::InvalidAmlData(data.clone(), "AmlData to int")),
         }
     }
@@ -249,43 +311,80 @@ impl AmlData {
     pub fn string(&self, ctx: &AmlVM) -> Result<AmlString, AmlError> {
         match self {
             Self::String(string) => Ok(string.clone()),
-            Self::Interger(int) => AmlString::from_bytes(format!("{int:X}").as_bytes()),
+            Self::Interger(int) => AmlString::from_bytes(&int.to_le_bytes()),
 
             data => Err(AmlError::InvalidAmlData(data.clone(), "AmlData to string")),
         }
     }
 
     pub fn implicit_convert(self, to: &Self, ctx: &AmlVM) -> Result<AmlData, AmlError> {
+        //Find what to convert to.
+        let mut to = to;
+        loop {
+            match to {
+                Self::StackRef(stack_ref) => to = ctx.get_stack(*stack_ref)?,
+                Self::ObjRef(obj_ref) => to = &ctx.get_node(*obj_ref)?.data,
+                Self::ArgRef(_) => {
+                    return Ok(self);
+                }
+                Self::LocalRef(data_ref)
+                    if matches!(
+                        ctx.get_stack(*data_ref),
+                        Ok(Self::StackRef(_) | Self::ObjRef(_))
+                    ) =>
+                {
+                    to = ctx.get_stack(*data_ref)?;
+                }
+                _ => break,
+            }
+        }
+
+        //Deref self
+        let mut data = self;
+        loop {
+            match data {
+                Self::StackRef(stack_ref) => data = ctx.get_stack(stack_ref)?.clone(),
+                Self::ObjRef(obj_ref) => data = ctx.get_node(obj_ref)?.data.clone(),
+                _ => break,
+            }
+        }
+
+        //Convert
         match to {
-            Self::Interger(_) => Ok(AmlData::Interger(self.interger(ctx)?)),
-            Self::String(_) => Ok(AmlData::String(self.string(ctx)?)),
-            _ => Ok(self),
+            Self::Interger(_) => Ok(Self::Interger(data.interger(ctx)?)),
+            Self::String(string)
+                if string.0.borrow().is_empty()
+                    && let Self::Interger(int) = data =>
+            {
+                AmlString::from_bytes(format!("{int:X}").as_bytes()).map(AmlData::String)
+            }
+            Self::String(_) => Ok(Self::String(data.string(ctx)?)),
+            _ => Ok(data),
         }
     }
 
     ///Changes the lhs of the data while applying the implicit type conversions.
     pub fn mutate(&mut self, other: Self, ctx: &mut AmlVM) -> Result<(), AmlError> {
         let converted = match other {
-            Self::Arg(arg) => {
-                let data = ctx.get_arg_ref(arg)?;
-                let data = ctx.get_stack(data)?;
+            Self::ArgRef(arg) => {
+                let data = ctx.get_stack(arg)?;
                 match data {
-                    Self::StackRef(stack_ref) => {
-                        let ptr = stack_ref.clone();
-                        ctx.get_stack(ptr)?
-                    }
-                    Self::ObjRef(obj_ref) => {
-                        let obj_ref = obj_ref.clone();
-                        &mut ctx.mut_node(obj_ref)?.data
-                    }
+                    Self::StackRef(stack_ref) => ctx.get_stack(*stack_ref)?,
+                    Self::ObjRef(obj_ref) => &mut ctx.mut_node(*obj_ref)?.data,
                     _ => data,
                 }
                 .clone()
                 .implicit_convert(self, ctx)?
             }
-            Self::Local(local) => {
-                let data = ctx.get_local_ref(local)?;
-                ctx.get_stack(data)?.clone().implicit_convert(self, ctx)?
+            Self::LocalRef(local) => {
+                let data = ctx.get_stack(local)?;
+                match data {
+                    Self::StackRef(stack_ref) => ctx.get_stack(*stack_ref)?,
+                    Self::ObjRef(obj_ref) => &mut ctx.mut_node(*obj_ref)?.data,
+                    data => data,
+                }
+                .clone()
+                .implicit_convert(self, ctx)?
             }
             _ => other.implicit_convert(self, ctx)?,
         };

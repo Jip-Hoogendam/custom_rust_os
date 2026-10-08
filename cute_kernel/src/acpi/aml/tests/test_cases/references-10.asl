@@ -21,3 +21,4 @@ DefinitionBlock ("", "DSDT", 2, "uTEST", "TESTTABL", 0xF0F0F0F0)
         TEST(RefOf(Local0), 10)
         Return (Local0)
     }
+}

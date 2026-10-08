@@ -440,13 +440,20 @@ impl AmlVM {
 
             AmlOp::RefOfOp => {
                 let data = self.stack.pop_data()?;
-                self.stack.push_data(data)?;
+                let ptr = match data {
+                    AmlData::ArgRef(arg) => AmlData::StackRef(arg),
+                    AmlData::LocalRef(local) => AmlData::StackRef(local),
+                    r @ AmlData::ObjRef(_) => r,
+                    _ => Err(AmlError::InvalidAmlData(data, "Refof"))?,
+                };
+                serial_println!("Local : {:?}", ptr);
+                self.stack.push_data(ptr)?;
             }
 
             AmlOp::CopyObjectOp => {
                 let data = self.stack.pop_data()?;
-                let mut name_res = self.stack.pop_data()?;
-                name_res.mutate(data, self)?;
+                let name_res = self.stack.pop_data()?;
+                name_res.copy(self, data)?;
             }
             AmlOp::LnotOp => {
                 let int = self.stack.pop_data()?.interger(self)?;
@@ -717,7 +724,8 @@ impl AmlVM {
             | AmlOp::Arg5
             | AmlOp::Arg6 => {
                 let arg = ArgObj::exec(self)?;
-                AmlData::Arg(arg)
+                let arg_ref = self.get_arg_ref(arg)?;
+                AmlData::ArgRef(arg_ref)
             }
             AmlOp::Local0
             | AmlOp::Local1
@@ -728,7 +736,8 @@ impl AmlVM {
             | AmlOp::Local6
             | AmlOp::Local7 => {
                 let local = LocalObj::exec(self)?;
-                AmlData::Local(local)
+                let local_ref = self.get_local_ref(local)?;
+                AmlData::LocalRef(local_ref)
             }
             _ => {
                 let obj_ref = self.resolve_name_string()?;
@@ -924,7 +933,10 @@ impl AmlVM {
 
         match ArgObj::parse(op) {
             Ok(arg) => {
-                self.stack.push_data(AmlData::Arg(arg))?;
+                let arg_ref = self.get_arg_ref(arg)?;
+                let data = self.get_stack(arg_ref)?;
+                let dataderef = data.deref(self)?;
+                self.stack.push_data(dataderef.clone())?;
                 return Ok(());
             }
             Err(AmlError::InvalidData(_, _)) => (),
@@ -933,7 +945,9 @@ impl AmlVM {
 
         match LocalObj::parse(op) {
             Ok(local) => {
-                self.stack.push_data(AmlData::Local(local))?;
+                let local_ref = self.get_local_ref(local)?;
+                let data = self.get_stack(local_ref)?;
+                self.stack.push_data(data.clone());
                 return Ok(());
             }
             Err(AmlError::InvalidData(_, _)) => (),

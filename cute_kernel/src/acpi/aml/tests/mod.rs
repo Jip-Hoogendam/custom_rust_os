@@ -19,7 +19,10 @@ use super::{
 };
 
 #[cfg(test)]
-use alloc::boxed::Box;
+use core::cell::RefCell;
+
+#[cfg(test)]
+use alloc::{boxed::Box, rc::Rc};
 
 #[cfg(test)]
 fn aml_test_case(boxed_data: &[u8]) -> (AmlVM, AmlData) {
@@ -42,7 +45,7 @@ fn aml_test_case(boxed_data: &[u8]) -> (AmlVM, AmlData) {
 fn refrences_0() {
     let boxed = Box::new(*include_bytes!("./compiled/references-0.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.string(&vm).unwrap() == AmlString(Box::new(*b"MyString")));
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"MyString").unwrap());
 }
 
 ///Test passed
@@ -50,7 +53,7 @@ fn refrences_0() {
 fn refrences_1() {
     let boxed = Box::new(*include_bytes!("./compiled/references-1.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.string(&vm).unwrap() == AmlString(Box::new(*b"MyString")));
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"MyString").unwrap());
 }
 
 ///Test passed
@@ -58,7 +61,62 @@ fn refrences_1() {
 fn refrences_3() {
     let boxed = Box::new(*include_bytes!("./compiled/references-3.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.string(&vm).unwrap() == AmlString(Box::new(*b"WHY?")));
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"WHY?").unwrap());
+}
+
+///Test passed
+#[test_case]
+fn refrences_4() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-4.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.interger(&vm).unwrap() == 0x123);
+}
+
+///Test passed
+#[test_case]
+fn refrences_5() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-5.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"Modified").unwrap());
+}
+
+///Test passed
+#[test_case]
+fn refrences_6() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-6.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.interger(&vm).unwrap() == 0xDEAD_BEEF);
+}
+
+///Test passsed
+#[test_case]
+fn refrences_7() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-7.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"MyString").unwrap());
+}
+
+///Test passed
+#[test_case]
+fn refrences_8() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-8.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.interger(&vm).unwrap() == 0xDEAD_BEEF);
+}
+
+///Test passed
+#[test_case]
+fn refrences_9() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-9.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.interger(&vm).unwrap() == 0x676E_6F6C_7972_6576);
+}
+
+#[test_case]
+fn refrences_10() {
+    let boxed = Box::new(*include_bytes!("./compiled/references-10.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.interger(&vm).unwrap() == 0x100A);
 }
 
 ///Test passed

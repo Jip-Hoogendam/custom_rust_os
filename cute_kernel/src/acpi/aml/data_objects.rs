@@ -1,21 +1,33 @@
-use alloc::{boxed::Box, vec};
+use core::cell::RefCell;
 
-use crate::acpi::aml::{
-    AmlError, Resolvable,
-    executor::{self, AmlVM, Buffer},
-    named_objects::NameString,
-    namenode::AmlData,
+use alloc::{boxed::Box, rc::Rc, vec};
+
+use crate::{
+    acpi::aml::{
+        AmlError, Resolvable,
+        executor::{self, AmlVM, Buffer},
+        named_objects::NameString,
+        namenode::AmlData,
+    },
+    serial_println,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AmlString(pub Box<[u8]>);
+#[derive(Debug, PartialEq, Eq)]
+pub struct AmlString(pub Rc<RefCell<Box<[u8]>>>);
+
+impl Clone for AmlString {
+    fn clone(&self) -> Self {
+        serial_println!("CALL");
+        Self(Rc::clone(&self.0))
+    }
+}
 
 impl AmlString {
     pub fn exec(ctx: &mut AmlVM) -> Result<Self, AmlError> {
         let mut string = vec![];
         loop {
             match ctx.next()? {
-                0x00 => break Ok(Self(string.into_boxed_slice())),
+                0x00 => break Ok(Self(Rc::new(RefCell::new(string.into_boxed_slice())))),
                 char @ 0x01..0x7F => string.push(char),
                 data => break Err(AmlError::InvalidData(data, "AmlString")),
             }
@@ -26,12 +38,12 @@ impl AmlString {
         let mut string = vec![];
         for byte in bytes {
             match byte {
-                0x00 => return Ok(Self(string.into_boxed_slice())),
+                0x00 => return Ok(Self(Rc::new(RefCell::new(string.into_boxed_slice())))),
                 char @ 0x01..0x7F => string.push(*char),
                 data => return Err(AmlError::InvalidData(*data, "AmlString")),
             }
         }
-        Ok(Self(string.into_boxed_slice()))
+        Ok(Self(Rc::new(RefCell::new(string.into_boxed_slice()))))
     }
 }
 
