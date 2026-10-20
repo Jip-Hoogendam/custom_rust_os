@@ -100,8 +100,8 @@ pub struct Package {
 
 impl Resolvable for Package {
     fn load(ctx: &mut AmlVM, start: usize) -> Result<Self, AmlError> {
-        let len = ctx.pop_data()?.interger(ctx)?;
-        let elements = ctx.pop_data()?.interger(ctx)?;
+        let len = ctx.pop_data()?.get_interger(ctx)?;
+        let elements = ctx.pop_data()?.get_interger(ctx)?;
         let strea_save = ctx.stream().index();
         ctx.stream().index = start;
         let elements = ctx.fn_for(

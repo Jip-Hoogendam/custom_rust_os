@@ -69,7 +69,7 @@ fn refrences_3() {
 fn refrences_4() {
     let boxed = Box::new(*include_bytes!("./compiled/references-4.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 0x123);
+    assert!(res.get_interger(&vm).unwrap() == 0x123);
 }
 
 ///Test passed
@@ -85,7 +85,7 @@ fn refrences_5() {
 fn refrences_6() {
     let boxed = Box::new(*include_bytes!("./compiled/references-6.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 0xDEAD_BEEF);
+    assert!(res.get_interger(&vm).unwrap() == 0xDEAD_BEEF);
 }
 
 ///Test passsed
@@ -101,7 +101,7 @@ fn refrences_7() {
 fn refrences_8() {
     let boxed = Box::new(*include_bytes!("./compiled/references-8.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 0xDEAD_BEEF);
+    assert!(res.get_interger(&vm).unwrap() == 0xDEAD_BEEF);
 }
 
 ///Test passed
@@ -109,14 +109,14 @@ fn refrences_8() {
 fn refrences_9() {
     let boxed = Box::new(*include_bytes!("./compiled/references-9.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 0x676E_6F6C_7972_6576);
+    assert!(res.get_interger(&vm).unwrap() == 0x676E_6F6C_7972_6576);
 }
 
 #[test_case]
 fn refrences_10() {
     let boxed = Box::new(*include_bytes!("./compiled/references-10.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 0x100A);
+    assert!(res.get_interger(&vm).unwrap() == 0x100A);
 }
 
 ///Test passed
@@ -124,7 +124,7 @@ fn refrences_10() {
 fn while_break() {
     let boxed = Box::new(*include_bytes!("./compiled/while-break.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 10);
+    assert!(res.get_interger(&vm).unwrap() == 10);
 }
 
 ///Test passed
@@ -132,7 +132,7 @@ fn while_break() {
 fn while_break_deep() {
     let boxed = Box::new(*include_bytes!("./compiled/while-break-deep.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 1);
+    assert!(res.get_interger(&vm).unwrap() == 1);
 }
 
 ///Test passed
@@ -140,7 +140,7 @@ fn while_break_deep() {
 fn while_continue() {
     let boxed = Box::new(*include_bytes!("./compiled/while-continue.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 10);
+    assert!(res.get_interger(&vm).unwrap() == 10);
 }
 
 ///Test passed
@@ -148,7 +148,7 @@ fn while_continue() {
 fn while_continue_deep() {
     let boxed = Box::new(*include_bytes!("./compiled/while-continue-deep.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 3);
+    assert!(res.get_interger(&vm).unwrap() == 3);
 }
 
 ///Test passed
@@ -156,7 +156,7 @@ fn while_continue_deep() {
 fn scope() {
     let boxed = Box::new(*include_bytes!("./compiled/scope.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 13);
+    assert!(res.get_interger(&vm).unwrap() == 13);
 }
 
 ///Test passed
@@ -164,5 +164,5 @@ fn scope() {
 fn method_calls() {
     let boxed = Box::new(*include_bytes!("./compiled/method-calls.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.interger(&vm).unwrap() == 8);
+    assert!(res.get_interger(&vm).unwrap() == 8);
 }

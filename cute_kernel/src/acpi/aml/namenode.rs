@@ -182,14 +182,100 @@ impl AmlData {
     }
 
     ///Sets the new value without type conversions.
-    pub fn set(&mut self, ctx: &mut AmlVM, new: AmlData) -> Result<(), AmlError> {
-        let data = match self {
+    pub fn store(&mut self, ctx: &mut AmlVM, new: AmlData) -> Result<(), AmlError> {
+        serial_println!("Storing : {:?}", self);
+
+        let (data, new) = match self {
             Self::Null => {
-                ctx.stack.push_data(new);
+                ctx.stack.push_data(new)?;
                 return Ok(());
             }
-            Self::ArgRef(arg) => {
-                let data = ctx.get_stack_mut(*arg)?;
+            Self::Debug => {
+                serial_println!("Debug : {:?}", new);
+                return Ok(());
+            }
+            Self::ArgRef(stack_ref) => {
+                let stack_ref = *stack_ref;
+                let new = new.implicit_convert(self, ctx)?;
+                let data = ctx.get_stack_mut(stack_ref)?;
+                (
+                    match data {
+                        Self::StackRef(stack_ref) => {
+                            let ptr = *stack_ref;
+                            ctx.get_stack_mut(ptr)?
+                        }
+                        Self::ObjRef(obj_ref) => {
+                            let obj_ref = *obj_ref;
+                            &mut ctx.mut_node(obj_ref)?.data
+                        }
+                        _ => {
+                            *data = new;
+                            return Ok(());
+                        }
+                    },
+                    new,
+                )
+            }
+            Self::LocalRef(stack_ref) => {
+                let stack_ref = *stack_ref;
+
+                //this one stupid edge case
+                if let Ok(Self::StackRef(stack_ref)) = ctx.get_stack(stack_ref) {
+                    let mut stack_ref = stack_ref;
+                    let data = loop {
+                        let data = ctx.get_stack(*stack_ref);
+                        stack_ref = match data {
+                            Ok(Self::StackRef(stack_ref)) => stack_ref,
+                            Ok(data) => break data,
+                            Err(e) => Err(e)?,
+                        }
+                    };
+                    let new = new.implicit_convert(data, ctx)?;
+                    let res_str = ctx.get_stack_mut(*stack_ref)?;
+                    (res_str, new)
+                } else {
+                    let data = ctx.get_stack_mut(stack_ref)?;
+                    (data, new)
+                }
+            }
+            Self::StackRef(stack_ref) => {
+                let stack_ref = *stack_ref;
+                let new = new.implicit_convert(self, ctx)?;
+                (ctx.get_stack_mut(stack_ref)?, new)
+            }
+            Self::ObjRef(obj_ref) => {
+                let obj_ref = *obj_ref;
+                let new = new.implicit_convert(self, ctx)?;
+                (&mut ctx.mut_node(obj_ref)?.data, new)
+            }
+            data => Err(AmlError::InvalidAmlData(data.clone(), "Aml Store"))?,
+        };
+
+        serial_println!("Test call ! {:?} : {:?}", data, new);
+        match (data, new) {
+            (Self::String(str), Self::String(res_str)) => {
+                let src_str = res_str.0.borrow();
+                for (index, byte) in str.0.borrow_mut().iter_mut().enumerate() {
+                    *byte = src_str[index];
+                }
+            }
+            (Self::Interger(int), Self::Interger(new_int)) => *int = new_int,
+            (data, new) => *data = new,
+        }
+        Ok(())
+    }
+
+    ///Sets the new value without type conversions.
+    pub fn set(&mut self, ctx: &mut AmlVM, new: AmlData) -> Result<(), AmlError> {
+        let new = new.implicit_convert(self, ctx)?;
+
+        let data = match self {
+            Self::Null => {
+                ctx.stack.push_data(new)?;
+                return Ok(());
+            }
+            Self::ArgRef(stack_ref) => {
+                let data = ctx.get_stack_mut(*stack_ref)?;
                 match data {
                     Self::StackRef(stack_ref) => {
                         let ptr = *stack_ref;
@@ -205,29 +291,9 @@ impl AmlData {
                     }
                 }
             }
-            Self::LocalRef(local) => {
-                let mut data = ctx.get_stack_mut(*local)?;
-                loop {
-                    data = match data {
-                        Self::StackRef(stack_ref) => {
-                            let ptr = *stack_ref;
-                            ctx.get_stack_mut(ptr)?
-                        }
-                        Self::ObjRef(obj_ref) => {
-                            let obj_ref = *obj_ref;
-                            &mut ctx.mut_node(obj_ref)?.data
-                        }
-                        Self::ArgRef(arg_ref) => {
-                            let arg_ref = *arg_ref;
-                            ctx.get_stack_mut(arg_ref)?
-                        }
-                        _ => {
-                            break data;
-                        }
-                    }
-                }
+            Self::LocalRef(stack_ref) | Self::StackRef(stack_ref) => {
+                ctx.get_stack_mut(*stack_ref)?
             }
-            Self::StackRef(stack_ref) => ctx.get_stack_mut(*stack_ref)?,
             Self::ObjRef(obj_ref) => &mut ctx.mut_node(*obj_ref)?.data,
             data => data,
         };
@@ -275,10 +341,10 @@ impl AmlData {
 
     ///Checks if it is a interger and returns the raw value. If it is not a interger it will
     ///choherse it into a interger.
-    pub fn interger(&self, ctx: &AmlVM) -> Result<u64, AmlError> {
-        match self {
+    pub fn get_interger(&self, ctx: &AmlVM) -> Result<u64, AmlError> {
+        let to_int = self.resolve_locals(ctx)?.deref(ctx)?;
+        match to_int {
             Self::Interger(int) => Ok(*int),
-            r @ (Self::ArgRef(_) | Self::LocalRef(_)) => r.resolve_locals(ctx)?.interger(ctx),
             Self::String(str)
                 if !str.0.borrow().is_empty()
                     && matches!(str.0.borrow()[0], b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') =>
@@ -318,6 +384,7 @@ impl AmlData {
     }
 
     pub fn implicit_convert(self, to: &Self, ctx: &AmlVM) -> Result<AmlData, AmlError> {
+        serial_println!("setting : {:?} -> {:?}", self, to);
         //Find what to convert to.
         let mut to = to;
         loop {
@@ -349,9 +416,11 @@ impl AmlData {
             }
         }
 
+        serial_println!("setting : {:?} -> {:?}", data, to);
+
         //Convert
         match to {
-            Self::Interger(_) => Ok(Self::Interger(data.interger(ctx)?)),
+            Self::Interger(_) => Ok(Self::Interger(data.get_interger(ctx)?)),
             Self::String(string)
                 if string.0.borrow().is_empty()
                     && let Self::Interger(int) = data =>
@@ -365,6 +434,10 @@ impl AmlData {
 
     ///Changes the lhs of the data while applying the implicit type conversions.
     pub fn mutate(&mut self, other: Self, ctx: &mut AmlVM) -> Result<(), AmlError> {
+        if matches!(self, AmlData::Null) {
+            ctx.stack.push_data(other)?;
+            return Ok(());
+        }
         let converted = match other {
             Self::ArgRef(arg) => {
                 let data = ctx.get_stack(arg)?;
@@ -388,7 +461,23 @@ impl AmlData {
             }
             _ => other.implicit_convert(self, ctx)?,
         };
-        self.set(ctx, converted)
+
+        let mut target = self;
+        loop {
+            target = match target {
+                Self::ArgRef(stack_ref) | Self::LocalRef(stack_ref) | Self::StackRef(stack_ref) => {
+                    let stack_ref = *stack_ref;
+                    ctx.get_stack_mut(stack_ref)?
+                }
+                Self::ObjRef(obj_ref) => {
+                    let obj_ref = *obj_ref;
+                    &mut ctx.mut_node(obj_ref)?.data
+                }
+                _ => break,
+            };
+        }
+        *target = converted;
+        Ok(())
     }
 }
 
