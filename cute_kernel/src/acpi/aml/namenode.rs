@@ -21,7 +21,6 @@ pub enum AmlData {
     LocalRef(usize),
     ArgRef(usize),
 
-    Index(ObjRef, usize),
     Debug,
     Buffer(Buffer),
     Interger(u64),
@@ -29,8 +28,10 @@ pub enum AmlData {
     NameString(NameString),
     NamedObject(NamedObjects),
     Method(Method),
+
     String(AmlString),
     Mutex(Rc<AtomicBool>),
+
     Device,
     Scope,
     Package(Package),

@@ -98,18 +98,27 @@ pub struct Package {
     elements: Box<[AmlData]>,
 }
 
-impl Resolvable for Package {
-    fn load(ctx: &mut AmlVM, start: usize) -> Result<Self, AmlError> {
-        let len = ctx.pop_data()?.get_interger(ctx)?;
-        let elements = ctx.pop_data()?.get_interger(ctx)?;
-        let strea_save = ctx.stream().index();
-        ctx.stream().index = start;
-        let elements = ctx.fn_for(
-            elements as usize,
-            len as usize,
-            executor::AmlVM::exec_package_element,
-        )?;
-        ctx.stream().index = strea_save;
-        Ok(Self { elements })
+impl Package {
+    pub fn new(len: usize) -> Result<Self, AmlError> {
+        if len > 255 {
+            Err(AmlError::PackageTooLong(len as u64))?
+        }
+        let mut elements = Box::new_uninit_slice(len);
+        for element in &mut elements {
+            element.write(AmlData::Null);
+        }
+        Ok(Package {
+            elements: unsafe { elements.assume_init() },
+        })
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut AmlData> {
+        self.elements.get_mut(index)
+    }
+
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<&AmlData> {
+        self.elements.get(index)
     }
 }

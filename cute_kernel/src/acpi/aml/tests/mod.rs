@@ -35,9 +35,24 @@ fn aml_test_case(boxed_data: &[u8]) -> (AmlVM, AmlData) {
     let args = [];
     match runner.get_or_exec(path, &args) {
         Ok(data) => (runner, data),
-        Err(e @ AmlError::ScopeErr(_, _)) => panic!("panic_a : {}", e),
+        Err(AmlError::ScopeErr(name, stackframe)) => panic!("Error in  : {}\n{}", name, stackframe),
         Err(e) => panic!("panic_b : {}", e),
     }
+}
+
+#[test_case]
+fn unresolved_paths() {
+    let boxed = Box::new(*include_bytes!("./compiled/unresolved-paths.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 1);
+}
+
+///Test passed
+#[test_case]
+fn while_dec_inc() {
+    let boxed = Box::new(*include_bytes!("./compiled/while-dec-inc.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 10);
 }
 
 ///Test passed

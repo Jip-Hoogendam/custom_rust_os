@@ -1,7 +1,7 @@
 use alloc::{boxed::Box, vec};
 
 use crate::{
-    acpi::aml::{AmlError, executor::ObjRef, namenode::AmlData},
+    acpi::aml::{AmlError, data_objects::Package, executor::ObjRef, namenode::AmlData},
     serial_println,
 };
 
@@ -18,6 +18,7 @@ pub enum StackItem {
     NameString, //Expect objref
     SimpleName,
     DataRefObj,
+    PackageElement,
     Target, //Expect objref
     Pkglen,
     Byte,
@@ -31,6 +32,12 @@ pub enum StackItem {
         arg_c: u8,
     },
 
+    Package {
+        old_length: usize,
+        package: Package,
+        inserted: usize,
+    },
+
     Conditional {
         ret_index: usize,
         old_length: usize,
@@ -41,11 +48,18 @@ pub enum StackItem {
         old_tlr: ObjRef,
     },
 
+    UnreselvedExtOp {
+        op_index: usize,
+        arg_c: u8,
+        arg_s: u8,
+    },
+
     UnreselvedOp {
         op_index: usize,
         arg_c: u8,
         arg_s: u8,
     },
+    ResExtOp(usize),
     ResOp(usize),
     Null,
 }
@@ -73,7 +87,18 @@ impl AmlStack {
 
     pub fn push_data(&mut self, item: AmlData) -> Result<(), AmlError> {
         match self.peek() {
-            Some(StackItem::UnreselvedOp { arg_s, .. }) => {
+            Some(StackItem::Package {
+                package, inserted, ..
+            }) => {
+                serial_println!("data : {:?}", item);
+                *package
+                    .get_mut(*inserted)
+                    .ok_or(AmlError::IndexOutOfBounds(*inserted))? = item;
+                *inserted += 1;
+            }
+            Some(
+                StackItem::UnreselvedExtOp { arg_s, .. } | StackItem::UnreselvedOp { arg_s, .. },
+            ) => {
                 let index = *arg_s as usize;
                 let index = self.stack_ptr - index - 1;
                 return if let Some(curr) = self.stack.get_mut(index)
@@ -134,6 +159,7 @@ impl AmlStack {
         if let Some(data) = self.peek() {
             match data {
                 StackItem::MethodCall { .. }
+                | StackItem::Package { .. }
                 | StackItem::Scope { .. }
                 | StackItem::Conditional { .. } => self.pop(),
                 _ => Ok(None),
@@ -148,6 +174,23 @@ impl AmlStack {
         if let Some(data) = self.peek() {
             serial_println!("peek : {:?}", data);
             match data {
+                StackItem::Package { .. } => Ok(Some(StackItem::PackageElement)),
+                StackItem::UnreselvedExtOp {
+                    op_index,
+                    arg_c,
+                    arg_s,
+                } => {
+                    if arg_s < arg_c {
+                        *arg_s += 1;
+                        let index = *arg_s as usize;
+                        let index = self.stack_ptr - index - 1;
+                        Ok(self.stack.get(index).cloned())
+                    } else {
+                        let data = Some(StackItem::ResExtOp(*op_index));
+                        self.pop()?;
+                        Ok(data)
+                    }
+                }
                 StackItem::UnreselvedOp {
                     op_index,
                     arg_c,
@@ -190,6 +233,19 @@ impl AmlStack {
     pub fn peek_at_mut(&mut self, index: usize) -> Option<&mut StackItem> {
         let index = index.checked_sub(1)?;
         self.stack.get_mut(index)
+    }
+
+    pub fn ext_op_arg_push(&mut self, op_index: usize, args: &[StackItem]) -> Result<(), AmlError> {
+        assert!(args.len() < u8::MAX as usize);
+        for item in args.iter().rev() {
+            self.push(item.clone())?;
+        }
+        #[allow(clippy::cast_possible_truncation)]
+        self.push(StackItem::UnreselvedExtOp {
+            op_index,
+            arg_c: args.len() as u8,
+            arg_s: 0u8,
+        })
     }
 
     pub fn op_arg_push(&mut self, op_index: usize, args: &[StackItem]) -> Result<(), AmlError> {
