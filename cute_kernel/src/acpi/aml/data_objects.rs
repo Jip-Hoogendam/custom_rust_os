@@ -5,7 +5,7 @@ use alloc::{boxed::Box, rc::Rc, vec};
 use crate::{
     acpi::aml::{
         AmlError, Resolvable,
-        executor::{self, AmlVM, Buffer},
+        executor::{self, AmlVM, ByteStream},
         named_objects::NameString,
         namenode::AmlData,
     },
@@ -44,6 +44,12 @@ impl AmlString {
             }
         }
         Ok(Self(Rc::new(RefCell::new(string.into_boxed_slice()))))
+    }
+
+    pub fn to_buf(self) -> Buffer {
+        Buffer {
+            buffer: self.0.borrow().clone(),
+        }
     }
 }
 
@@ -91,6 +97,28 @@ pub fn load_qword(ctx: &mut AmlVM) -> Result<u64, AmlError> {
         load_byte(ctx)?,
         load_byte(ctx)?,
     ]))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Buffer {
+    pub buffer: Box<[u8]>,
+}
+
+impl Buffer {
+    pub fn new(pkg_len: u64, mut size: u64, stream: &mut ByteStream) -> Result<Self, AmlError> {
+        if pkg_len > size {
+            size = pkg_len;
+        }
+
+        let mut buffer = Box::new_zeroed_slice(size as usize);
+        for byte in 0..(pkg_len as usize) {
+            buffer[byte].write(stream.next().ok_or(AmlError::EndOfStream)?);
+        }
+
+        Ok(Buffer {
+            buffer: unsafe { buffer.assume_init() },
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

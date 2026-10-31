@@ -1,6 +1,9 @@
 use crate::{
     acpi::{
-        aml::executor::AmlVM,
+        aml::{
+            executor::{AmlVM, ByteStream},
+            namenode::AmlData,
+        },
         sdt::{SDTHeader, ShortSDTHeader},
     },
     variables::AMLVM_STACK_SIZE,
@@ -13,10 +16,14 @@ pub struct DSDT {
 }
 
 impl DSDT {
-    #[must_use]
-    pub fn create_amlvm(&self) -> AmlVM {
+    pub fn load_byte_stream(&self) -> ByteStream {
         let start = unsafe { (core::ptr::from_ref::<Self>(self)).add(1) }.cast::<u8>();
         let length = self.header.length as usize - size_of::<SDTHeader>();
-        AmlVM::new(start, length, AMLVM_STACK_SIZE)
+        ByteStream::new(start, length)
+    }
+
+    #[must_use]
+    pub fn create_amlvm(&self) -> AmlVM {
+        AmlVM::new(self.load_byte_stream(), AMLVM_STACK_SIZE)
     }
 }

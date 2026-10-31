@@ -1,7 +1,12 @@
 use alloc::{boxed::Box, vec};
 
 use crate::{
-    acpi::aml::{AmlError, data_objects::Package, executor::ObjRef, namenode::AmlData},
+    acpi::aml::{
+        AmlError,
+        data_objects::Package,
+        executor::{ByteStream, ObjRef},
+        namenode::AmlData,
+    },
     serial_println,
 };
 
@@ -25,10 +30,16 @@ pub enum StackItem {
     Eval(AmlData),
 
     Return,
+
+    Load {
+        prev_stream: ByteStream,
+        target: AmlData,
+    },
+
     MethodCall {
-        ret_index: usize,
-        old_length: usize,
+        prev_stream: ByteStream,
         old_method_ptr: usize,
+        old_tlr: ObjRef,
         arg_c: u8,
     },
 
@@ -158,7 +169,8 @@ impl AmlStack {
     pub fn pop_scoped(&mut self) -> Result<Option<StackItem>, AmlError> {
         if let Some(data) = self.peek() {
             match data {
-                StackItem::MethodCall { .. }
+                StackItem::Load { .. }
+                | StackItem::MethodCall { .. }
                 | StackItem::Package { .. }
                 | StackItem::Scope { .. }
                 | StackItem::Conditional { .. } => self.pop(),
@@ -207,7 +219,8 @@ impl AmlStack {
                         Ok(data)
                     }
                 }
-                StackItem::MethodCall { .. }
+                StackItem::Load { .. }
+                | StackItem::MethodCall { .. }
                 | StackItem::Scope { .. }
                 | StackItem::Conditional { .. } => Ok(None),
                 StackItem::Data(_) => Err(AmlError::StackCorruption),

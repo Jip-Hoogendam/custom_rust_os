@@ -5,8 +5,8 @@ use alloc::{boxed::Box, format, rc::Rc, vec::Vec};
 use crate::{
     acpi::aml::{
         AmlError,
-        data_objects::{AmlString, Package},
-        executor::{AmlVM, ArgObj, Buffer, ByteStream, LocalObj, ObjRef},
+        data_objects::{AmlString, Buffer, Package},
+        executor::{AmlVM, ArgObj, ByteStream, LocalObj, ObjRef},
         named_objects::{NameSeg, NameString, NamedObjects},
         stack_items::StackItem,
     },
@@ -21,22 +21,30 @@ pub enum AmlData {
     LocalRef(usize),
     ArgRef(usize),
 
-    Debug,
-    Buffer(Buffer),
-    Interger(u64),
-
     NameString(NameString),
     NamedObject(NamedObjects),
-    Method(Method),
+    OpRegionField(),
 
-    String(AmlString),
-    Mutex(Rc<AtomicBool>),
-
-    Device,
     Scope,
-    Package(Package),
+
+    Interger(u64),         //Interger: 1
+    String(AmlString),     //String: 2
+    Buffer(Buffer),        //Buffer: 3
+    Package(Package),      //Package: 4
+    FieldUnit(),           //FieldUnit: 5
+    Device(),              //Device: 6
+    Event(),               //Event:7
+    Method(Method),        //Control Method: 8
+    Mutex(Rc<AtomicBool>), //Mutex: 9
+    OpRegion(),            //Operation Region: 10
+    PowerResource(),       //Power Resource: 11
+    Processor(),           //Processor: 12
+    ThermalZone(),         //ThermalZone: 13
+    BufferField(),         //Buffer Field: 14
+    Debug,                 //Debug object: 16
+
     #[default]
-    Null,
+    Null, //Uninitialized: 0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,30 +67,37 @@ impl Method {
         }
     }
 
-    pub fn invoke(&self, ctx: &mut AmlVM, _fn_name: &NameSeg) -> Result<(), AmlError> {
-        let index = ctx.stream().index;
-        let length = ctx.stream().length;
-
+    pub fn invoke(
+        &self,
+        ctx: &mut AmlVM,
+        fn_ref: ObjRef,
+        _fn_name: &NameSeg,
+    ) -> Result<(), AmlError> {
         //push locals
         for _ in 0..8 {
             ctx.stack.push(StackItem::Data(AmlData::Null))?;
         }
 
+        let old_method_ptr = ctx.method_ptr;
+        let mut stream = self.data.clone();
+        ctx.swp_byte_stream(&mut stream);
+
         ctx.stack.push(StackItem::MethodCall {
-            ret_index: index,
-            old_length: length,
-            old_method_ptr: ctx.method_ptr,
+            prev_stream: stream,
+            old_method_ptr,
+            old_tlr: ctx.get_tlr(),
             arg_c: self.arg_c,
         })?;
         ctx.method_ptr = ctx.stack.index();
+        ctx.set_tlr(fn_ref);
 
-        *ctx.stream() = self.data.clone();
         Ok(())
     }
 
     #[inline]
     pub fn call(
         &self,
+        fn_ref: ObjRef,
         ctx: &mut AmlVM,
         args: &[AmlData],
         fn_name: &NameSeg,
@@ -99,19 +114,18 @@ impl Method {
             ctx.stack.push(StackItem::Data(AmlData::Null))?;
         }
         ctx.stack.push(StackItem::MethodCall {
-            ret_index: stream_clone.index,
-            old_length: stream_clone.length,
+            prev_stream: stream_clone,
             old_method_ptr: ctx.method_ptr,
+            old_tlr: ctx.get_tlr(),
             arg_c: self.arg_c,
         })?;
         ctx.method_ptr = ctx.stack.index();
+        ctx.set_tlr(fn_ref);
 
         match ctx.exec() {
             Ok(()) => (),
             Err(e) => Err(AmlError::ScopeErr(fn_name.clone(), Box::new(e)))?,
         }
-
-        ctx.swp_byte_stream(&mut stream_clone);
 
         let ret = match ctx.stack.pop()? {
             Some(StackItem::Eval(data)) => {
@@ -146,6 +160,65 @@ impl AmlData {
             Self::StackRef(stack_ref) => ctx.get_stack_mut(*stack_ref),
             Self::ObjRef(obj_ref) => Ok(&mut ctx.mut_node(*obj_ref)?.data),
             _ => Ok(self),
+        }
+    }
+
+    pub fn concat(self, other: Self, ctx: &AmlVM) -> Result<Self, AmlError> {
+        fn string_convert(data: AmlData) -> Result<AmlString, AmlError> {
+            match data {
+                AmlData::Package(_) => AmlString::from_bytes(b"[Package]"),
+                AmlData::FieldUnit() => AmlString::from_bytes(b"[Field]"),
+                AmlData::Device() => AmlString::from_bytes(b"[Device]"),
+                AmlData::Event() => AmlString::from_bytes(b"[Event}"),
+                AmlData::Method(_) => AmlString::from_bytes(b"[Control Method]"),
+                AmlData::Mutex(_) => AmlString::from_bytes(b"[Mutex]"),
+                AmlData::OpRegion() => AmlString::from_bytes(b"[Operation Region]"),
+                AmlData::PowerResource() => AmlString::from_bytes(b"[Power Resource]"),
+                AmlData::Processor() => AmlString::from_bytes(b"[Processor]"),
+                AmlData::ThermalZone() => AmlString::from_bytes(b"[Thermal Zone]"),
+                AmlData::BufferField() => AmlString::from_bytes(b"[Buffer Field]"),
+                AmlData::Debug => AmlString::from_bytes(b"[Debug Object]"),
+                data => Err(AmlError::InvalidAmlData(data, "String convert")),
+            }
+        }
+
+        let source_1 = match self {
+            r @ (Self::Interger(_) | Self::Buffer(_) | Self::String(_)) => r,
+            convert => Self::String(string_convert(convert)?),
+        };
+
+        match (source_1, other) {
+            (
+                Self::Interger(source_1),
+                r @ (Self::Buffer(_) | Self::String(_) | Self::Interger(_)),
+            ) => {
+                let source_2 = r.get_interger(ctx)?;
+                let buffer = [source_1.to_le_bytes(), source_2.to_le_bytes()].concat();
+                Ok(Self::Buffer(Buffer {
+                    buffer: buffer.into_boxed_slice(),
+                }))
+            }
+            (Self::Buffer(source_1), r) => {
+                let source_2 = match r {
+                    Self::Buffer(_) | Self::String(_) | Self::Interger(_) => r.buffer(ctx)?,
+                    other => string_convert(other)?.to_buf(),
+                };
+                let buffer = [source_1.buffer, source_2.buffer].concat();
+                Ok(Self::Buffer(Buffer {
+                    buffer: buffer.into_boxed_slice(),
+                }))
+            }
+            (Self::String(source_1), r) => {
+                let source_2 = match r {
+                    Self::Buffer(_) | Self::String(_) | Self::Interger(_) => r.string(ctx)?,
+                    other => string_convert(other)?,
+                };
+                let source_1 = source_1.0.borrow();
+                let source_2 = source_2.0.borrow();
+                let buffer = [&source_1[..], &source_2[..]].concat();
+                Ok(Self::String(AmlString::from_bytes(&buffer)?))
+            }
+            (data, _) => Err(AmlError::InvalidAmlData(data, "Concat")),
         }
     }
 
@@ -369,6 +442,15 @@ impl AmlData {
                 }
                 Ok(new_int)
             }
+
+            Self::Buffer(Buffer { buffer }) if buffer.iter().len() <= size_of::<u64>() => {
+                let mut bytes = [0; size_of::<u64>()];
+                for i in 0..buffer.len() {
+                    bytes[i] = buffer[i];
+                }
+                let int = u64::from_le_bytes(bytes);
+                Ok(int)
+            }
             data => Err(AmlError::InvalidAmlData(data.clone(), "AmlData to int")),
         }
     }
@@ -379,7 +461,21 @@ impl AmlData {
         match self {
             Self::String(string) => Ok(string.clone()),
             Self::Interger(int) => AmlString::from_bytes(&int.to_le_bytes()),
+            Self::Buffer(buf) => AmlString::from_bytes(&buf.buffer),
 
+            data => Err(AmlError::InvalidAmlData(data.clone(), "AmlData to string")),
+        }
+    }
+
+    ///Checks if it is a buffer and returns the raw value. If it is not a buffer it will try to
+    ///convert it into a buffer
+    pub fn buffer(&self, ctx: &AmlVM) -> Result<Buffer, AmlError> {
+        match self {
+            Self::Buffer(buf) => Ok(buf.clone()),
+            Self::Interger(int) => Ok(Buffer {
+                buffer: Box::new(int.to_le_bytes()),
+            }),
+            Self::String(string) => Ok(string.clone().to_buf()),
             data => Err(AmlError::InvalidAmlData(data.clone(), "AmlData to string")),
         }
     }

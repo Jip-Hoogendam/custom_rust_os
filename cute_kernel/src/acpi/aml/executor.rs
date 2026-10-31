@@ -9,15 +9,21 @@ use core::{
 use super::stack_items::StackItem;
 
 use crate::{
-    acpi::aml::{
-        AmlError, ByteCodeInstruction, LOCAL_COUNT,
-        data_objects::{AmlString, Package, load_byte, load_dword, load_qword, load_word},
-        named_objects::{NamePath, NameSeg, NameString},
-        namenode::{AmlData, Method, NameNode},
-        opcodes::{AmlOp, ExtOp},
-        stack_items::AmlStack,
+    acpi::{
+        SDTables,
+        aml::{
+            AmlError, ByteCodeInstruction, LOCAL_COUNT,
+            data_objects::{
+                AmlString, Buffer, Package, load_byte, load_dword, load_qword, load_word,
+            },
+            named_objects::{NamePath, NameSeg, NameString},
+            namenode::{AmlData, Method, NameNode},
+            opcodes::{AmlOp, ExtOp},
+            stack_items::AmlStack,
+        },
     },
     collections::typed_arena::{TypedArena, TypedArenaAllocation},
+    memory::addresses::VirtAddr,
     print, serial_println,
 };
 
@@ -188,13 +194,13 @@ impl AmlVM {
     /// Never i just don't want to disable the clippy
     #[must_use]
     #[rustfmt::skip]
-    pub fn new(start_point: *const u8, length: usize, stack_size: usize) -> Self {
+    pub fn new(stream: ByteStream, stack_size: usize) -> Self {
         let mut heap = TypedArena::new();
         let root_obj = NameNode::new(NameSeg::root(), AmlData::Null);
         let root_ref = heap.instert(root_obj);
 
         let mut new = Self {
-            stream: ByteStream::new(start_point, length),
+            stream,
             heap,
             top_level_node: root_ref,
             stack: AmlStack::new(stack_size),
@@ -249,6 +255,16 @@ impl AmlVM {
                                 self.stream.length = old_length;
                                 self.stack.push_data(AmlData::Package(package));
                             }
+
+                            Ok(Some(StackItem::Load {
+                                prev_stream,
+                                mut target,
+                            })) => {
+                                self.stream = prev_stream;
+                                target
+                                    .store(self, AmlData::Interger(1))
+                                    .map_err(|e| self.unwind_stackframe(e))?;
+                            }
                             Ok(Some(StackItem::Conditional {
                                 old_length,
                                 ret_index,
@@ -264,15 +280,14 @@ impl AmlVM {
                                 self.top_level_node = old_tlr;
                             }
                             Ok(Some(StackItem::MethodCall {
-                                ret_index,
-                                old_length,
+                                mut prev_stream,
                                 old_method_ptr,
+                                old_tlr,
                                 arg_c,
                             })) => {
-                                serial_println!("Natrual end");
-                                self.stream.index = ret_index;
-                                self.stream.length = old_length;
+                                self.swp_byte_stream(&mut prev_stream);
                                 self.method_ptr = old_method_ptr;
+                                self.set_tlr(old_tlr);
                                 //pop locals and args
                                 for _ in 0..(8 + arg_c) {
                                     self.stack.pop();
@@ -402,6 +417,35 @@ impl AmlVM {
                 };
                 target.store(self, data)
             }
+            ExtOp::LoadOp => {
+                let AmlData::NameString(name_string) = self.stack.pop_data()? else {
+                    return Ok(());
+                };
+
+                let mut target = self.stack.pop_data()?;
+                let obj_ref = self.find_node_string(name_string)?;
+                let obj = self.get_node(obj_ref)?;
+                let ptr = match &obj.data {
+                    AmlData::Buffer(buffer) => buffer.buffer.as_ptr(),
+                    AmlData::OpRegion() | AmlData::OpRegionField() => {
+                        todo!("Implement op region fields")
+                    }
+                    data => Err(AmlError::InvalidAmlData(data.clone(), "LoadOp"))?,
+                };
+
+                let adress = VirtAddr::from_ptr(ptr);
+
+                if let Ok(SDTables::SSDT(ssdt)) = SDTables::load(adress) {
+                    let mut stream = ssdt.load_byte_stream();
+                    core::mem::swap(&mut stream, self.stream());
+                    self.stack.push(StackItem::Load {
+                        prev_stream: stream,
+                        target,
+                    })
+                } else {
+                    target.store(self, AmlData::Interger(0))
+                }
+            }
             op => Err(AmlError::UnexpectedExtOp(op, "Resolve ext op")),
         }
     }
@@ -418,7 +462,7 @@ impl AmlVM {
                         Err(e) => Err(e)?,
                     }
                 } else {
-                    Err(AmlError::InvalidAmlData(name, "ResolveOp"))?;
+                    Err(AmlError::InvalidAmlData(name, "ResolveOp Name op"))?;
                 }
             }
 
@@ -468,14 +512,14 @@ impl AmlVM {
                 loop {
                     match self.stack.pop()? {
                         Some(StackItem::MethodCall {
-                            ret_index,
-                            old_length,
+                            mut prev_stream,
                             old_method_ptr,
+                            old_tlr,
                             arg_c,
                         }) => {
-                            self.stream.index = ret_index;
-                            self.stream.length = old_length;
+                            self.swp_byte_stream(&mut prev_stream);
                             self.method_ptr = old_method_ptr;
+                            self.set_tlr(old_tlr);
                             //pop locals and args
                             for _ in 0..(8 + arg_c) {
                                 self.stack.pop()?;
@@ -552,13 +596,29 @@ impl AmlVM {
                 if let AmlData::ObjRef(method_ref) = self.pop_data()? {
                     let node = self.get_node(method_ref)?;
                     if let AmlData::Method(method) = node.data.clone() {
-                        method.invoke(self, &node.name.clone())?;
+                        method.invoke(self, method_ref, &node.name.clone())?;
                     } else {
                         Err(AmlError::StackCorruption)?;
                     }
                 } else {
                     Err(AmlError::StackCorruption)?;
                 }
+            }
+
+            AmlOp::BufferOp => {
+                let mut pkg_len = self.stack.pop_data()?.get_interger(self)?;
+                let size = self.stack.pop_data()?.get_interger(self)?;
+                pkg_len -= self.stream.index as u64 - op_index as u64 - 1;
+                let buffer = Buffer::new(pkg_len, size, self.stream())?;
+                self.stack.push_data(AmlData::Buffer(buffer))?;
+            }
+
+            AmlOp::ConcatOp => {
+                let source_1 = self.pop_data()?;
+                let source_2 = self.pop_data()?;
+                let mut target = self.pop_data()?;
+                let concatted = source_1.concat(source_2, self)?;
+                target.store(self, concatted)?;
             }
 
             AmlOp::RefOfOp => {
@@ -684,14 +744,20 @@ impl AmlVM {
             AmlOp::WhileOp | AmlOp::IfOp => {
                 self.push_unresolved_op(&[StackItem::Pkglen, StackItem::TermArg])
             }
+
+            AmlOp::ExtOpPrefix => {
+                let op = self.next_ext_opcode()?;
+                self.parse_ext_expr_opcode(op)
+            }
             op => self.parse_expr_opcode(op),
         }
     }
 
     pub fn parse_ext_expr_opcode(&mut self, op: ExtOp) -> Result<(), AmlError> {
-        use StackItem::{SuperName, Target};
+        use StackItem::{NameString, SuperName, Target};
         match op {
             ExtOp::CondRefOfOp => self.push_unresolved_ext_op(&[SuperName, Target]),
+            ExtOp::LoadOp => self.push_unresolved_ext_op(&[NameString, Target]),
             op => Err(AmlError::UnexpectedExtOp(op, "ExprExtParse")),
         }
     }
@@ -699,7 +765,8 @@ impl AmlVM {
     pub fn parse_expr_opcode(&mut self, op: AmlOp) -> Result<(), AmlError> {
         use StackItem::{SimpleName, SuperName, Target, TermArg};
         match op {
-            AmlOp::AndOp
+            AmlOp::ConcatOp
+            | AmlOp::AndOp
             | AmlOp::XorOp
             | AmlOp::OrOp
             | AmlOp::AddOp
@@ -783,6 +850,9 @@ impl AmlVM {
                 }
                 other => Err(AmlError::UnexpectedExtOp(other, "ComputationalData"))?,
             },
+            AmlOp::BufferOp => {
+                return self.push_unresolved_op(&[StackItem::Pkglen, StackItem::TermArg]);
+            }
 
             op => Err(AmlError::UnexpectedOp(op, "ComputationalData"))?,
         };
@@ -806,12 +876,14 @@ impl AmlVM {
                 let child = self.get_node(start_obj).map_or(ObjRef::null(), |n| {
                     n.seek_scope(self, &name).unwrap_or(ObjRef::null())
                 });
+
                 if child.is_null() {
                     NameSeg::exec(self)?;
                     return Ok(ObjRef::null());
                 }
                 let name = NameSeg::exec(self)?;
-                Ok(self.get_node(child)?.find_child(self, &name)?)
+
+                self.get_node(child)?.find_child(self, &name)
             }
             AmlOp::MultiNameOp => {
                 self.next()?;
@@ -850,6 +922,7 @@ impl AmlVM {
                 AmlOp::Rootchar => {
                     self.next()?;
                     let mut node = self.get_tlr();
+
                     while let Some(parent) = self.get_node(node)?.parent {
                         node = parent;
                     }
@@ -959,13 +1032,6 @@ impl AmlVM {
     }
 
     fn push_node(&mut self, name: NameString, data: AmlData) -> Result<ObjRef, AmlError> {
-        // if no top level node set it to this node instead
-        if let NameString::Rel(NamePath::NameSeg(name), 0) = name {
-            let root = self.get_tlr();
-            let obj_ref = self.append_to_node(root, NameNode::new(name, data))?;
-            return Ok(obj_ref);
-        }
-
         let (path, node) = match name {
             NameString::Rel(path, parents) => {
                 let mut node = self.get_tlr();
@@ -1149,24 +1215,59 @@ impl AmlVM {
         self.parse_data_object(op)
     }
 
+    ///Finds a node from a namepath
+    pub fn find_node_path(&self, mut node: ObjRef, path: NamePath) -> Result<ObjRef, AmlError> {
+        for seg in path.iter() {
+            node = self.get_node(node)?.find_child(self, seg)?;
+        }
+        Ok(node)
+    }
+
+    pub fn find_node_string(&self, name: NameString) -> Result<ObjRef, AmlError> {
+        match name {
+            NameString::Rel(path, rel) => {
+                let mut root = self.get_tlr();
+                for _ in 0..rel {
+                    let node = self.get_node(root)?;
+                    if let Some(parent) = node.parent {
+                        root = parent;
+                    } else {
+                        Err(AmlError::NamedObjectNotFound(path.clone()))?
+                    }
+                }
+                self.find_node_path(root, path)
+            }
+            NameString::Root(path) => {
+                let mut root = self.get_tlr();
+                while let Ok(node) = self.get_node(root)
+                    && let Some(parent) = node.parent
+                {
+                    root = parent;
+                }
+                self.find_node_path(root, path)
+            }
+        }
+    }
+
     pub fn get_or_exec(
         &mut self,
         path: NamePath,
         call_args: &[AmlData],
     ) -> Result<AmlData, AmlError> {
-        let mut node = self.get_tlr();
-        for seg in path.iter() {
-            node = self.get_node(node)?.find_child(self, seg)?;
-        }
-        let name = &self.get_node(node)?.name.clone();
-        let data = self.get_node(node)?.data.clone();
+        let node = self.find_node_path(self.get_tlr(), path)?;
+        let (name, data) = {
+            let node = self.get_node(node)?;
+            let name = node.name.clone();
+            let data = node.data.clone();
+            (name, data)
+        };
 
         if let AmlData::Method(method) = data {
             if usize::from(method.arg_c) != call_args.len() {
                 Err(AmlError::InvalidArgCount(call_args.len(), method.arg_c))?;
             }
 
-            method.call(self, call_args, name)
+            method.call(node, self, call_args, &name)
         } else {
             Ok(data)
         }
@@ -1318,6 +1419,10 @@ impl AmlVM {
         self.top_level_node
     }
 
+    pub const fn set_tlr(&mut self, obj_ref: ObjRef) {
+        self.top_level_node = obj_ref
+    }
+
     ///Gets the current top level node
     pub fn get_tln(&self) -> Result<&NameNode, AmlError> {
         self.get_node(self.get_tlr())
@@ -1346,9 +1451,4 @@ impl AmlVM {
     pub fn pop_data(&mut self) -> Result<AmlData, AmlError> {
         self.stack.pop_data()
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Buffer {
-    buffer: Box<[u8]>,
 }

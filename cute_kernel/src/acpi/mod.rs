@@ -35,7 +35,7 @@ pub enum SDTables {
     /// Holds refrences to all other discriptor tables.
     RSDT(ShortSDTHeader) = u32::from_le_bytes(*b"RSDT"),
     SRAT(ShortSDTHeader) = u32::from_le_bytes(*b"SRAT"),
-    SSDT(ShortSDTHeader) = u32::from_le_bytes(*b"SSDT"),
+    SSDT(DSDT) = u32::from_le_bytes(*b"SSDT"),
     /// # Extended Root System Discriptor Table.
     ///
     /// This is here for completeness.

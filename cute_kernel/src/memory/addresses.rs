@@ -190,6 +190,12 @@ impl VirtAddr {
         Self(core::ptr::from_ref(data).cast::<()>() as usize)
     }
 
+    #[must_use]
+    #[inline]
+    pub fn from_ptr<T: ?Sized>(data: *const T) -> Self {
+        Self(data as *const () as usize)
+    }
+
     #[inline]
     #[must_use]
     pub const fn to_ptr<T>(&self) -> *const T {

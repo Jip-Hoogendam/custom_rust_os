@@ -5,11 +5,9 @@ use crate::{
 
 fn into_dstd(data: &[u8]) -> Option<&DSDT> {
     let ptr = VirtAddr::from_ref(data);
-    let data = SDTables::load(ptr).ok()?;
-    if let SDTables::DSDT(dtst) = data {
-        Some(dtst)
-    } else {
-        None
+    match SDTables::load(ptr).ok()? {
+        SDTables::SSDT(dsdt) | SDTables::DSDT(dsdt) => Some(dsdt),
+        _ => None,
     }
 }
 
@@ -40,6 +38,22 @@ fn aml_test_case(boxed_data: &[u8]) -> (AmlVM, AmlData) {
     }
 }
 
+// #[test_case]
+// fn to_x() {
+//     let boxed = Box::new(*include_bytes!("./compiled/to-x.aml"));
+//     let (vm, res) = aml_test_case(boxed.as_slice());
+//     assert!(res.get_interger(&vm).unwrap() == 0);
+// }
+
+///Test passed
+#[test_case]
+fn table_loading_0() {
+    let boxed = Box::new(*include_bytes!("./compiled/table-loading-0.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"Hello World 123").unwrap());
+}
+
+///Test passed
 #[test_case]
 fn unresolved_paths() {
     let boxed = Box::new(*include_bytes!("./compiled/unresolved-paths.aml"));
