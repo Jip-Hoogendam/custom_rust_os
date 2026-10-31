@@ -39,7 +39,15 @@ fn aml_test_case(boxed_data: &[u8]) -> (AmlVM, AmlData) {
 }
 
 #[test_case]
-fn to_x() {
+fn copy_a_method() {
+    let boxed = Box::new(*include_bytes!("./compiled/copy-a-method.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0);
+}
+
+///Test passed
+#[test_case]
+fn to_interger() {
     let boxed = Box::new(*include_bytes!("./compiled/to-interger.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
     assert!(res.get_interger(&vm).unwrap() == 0);
