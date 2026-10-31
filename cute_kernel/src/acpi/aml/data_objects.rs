@@ -156,7 +156,7 @@ impl Buffer {
 
 #[derive(Debug, Clone)]
 pub struct Package {
-    elements: Box<[AmlData]>,
+    pub elements: Box<[AmlData]>,
 }
 
 impl Package {

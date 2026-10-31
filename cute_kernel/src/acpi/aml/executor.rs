@@ -191,6 +191,7 @@ pub struct AmlVM {
     stream: ByteStream,
     top_level_node: ObjRef,
     pub stack: AmlStack,
+    pub debug: bool,
     heap: TypedArena<NameNode>,
     pub method_ptr: usize,
 }
@@ -212,6 +213,7 @@ impl AmlVM {
             heap,
             top_level_node: root_ref,
             stack: AmlStack::new(stack_size),
+            debug: false,
             method_ptr: 0,
         };
 
@@ -469,16 +471,18 @@ impl AmlVM {
             }
 
             AmlOp::DerefOfOp => {
-                let data = self.pop_data()?;
-                let res = match data {
-                    AmlData::StackRef(stack_ref)
-                    | AmlData::ArgRef(stack_ref)
-                    | AmlData::LocalRef(stack_ref) => self.get_stack(stack_ref)?,
-                    AmlData::ObjRef(obj_ref) => &self.get_node(obj_ref)?.data,
-                    AmlData::String(string) => &AmlData::String(AmlString::from_bytes(
-                        string.0.borrow().iter().as_slice(),
-                    )?),
-                    _ => Err(AmlError::InvalidAmlData(data, "Dref of op"))?,
+                let mut data = self.pop_data()?;
+                let res = loop {
+                    data = match data {
+                        AmlData::StackRef(stack_ref)
+                        | AmlData::ArgRef(stack_ref)
+                        | AmlData::LocalRef(stack_ref) => self.get_stack(stack_ref)?.clone(),
+                        AmlData::ObjRef(obj_ref) => self.get_node(obj_ref)?.data.clone(),
+                        AmlData::String(string) => AmlData::String(AmlString::from_bytes(
+                            string.0.borrow().iter().as_slice(),
+                        )?),
+                        _ => break data,
+                    };
                 };
                 self.stack.push_data(res.clone())
             }
@@ -688,7 +692,6 @@ impl AmlVM {
                             let mut iter = string.iter().skip(2).enumerate().take(16);
                             for (index, nibble) in &mut iter {
                                 let index = (len - index) * 4;
-                                serial_println!("index : {}, len:{}", index, len);
                                 buffer |= match nibble {
                                     d @ b'0'..=b'9' => u64::from(d - b'0') << index,
                                     c @ b'a'..=b'f' => u64::from(c - b'a' + 10) << index,
@@ -833,6 +836,33 @@ impl AmlVM {
                 let name_res = self.stack.pop_data()?;
                 name_res.copy(self, data)
             }
+
+            AmlOp::SizeOfOp => {
+                let target = self.stack.pop_data()?;
+                let target = target.resolve_locals(self)?;
+                let len = match target {
+                    AmlData::String(string) => string.len(),
+                    AmlData::Buffer(Buffer { buffer }) => buffer.len(),
+                    AmlData::Package(Package { elements }) => elements.len(),
+                    AmlData::ObjRef(obj_ref) => self.get_node(*obj_ref)?.children.len(),
+                    data => Err(AmlError::InvalidAmlData(data.clone(), "Resolve SizeOfOp"))?,
+                };
+                self.stack.push_data(AmlData::Interger(len as u64))
+            }
+
+            AmlOp::VarPackageOp | AmlOp::PackageOp => {
+                #[allow(clippy::cast_possible_truncation)]
+                let len = self.pop_data()?.get_interger(self)? as usize;
+                let num_elements = self.pop_data()?.get_interger(self)? as usize;
+                self.stack.push(StackItem::Package {
+                    old_length: self.stream.length,
+                    package: Package::new(num_elements)?,
+                    inserted: 0,
+                })?;
+                self.stream.length = op_index + len + 1;
+                Ok(())
+            }
+
             AmlOp::LnotOp => {
                 let int = self.stack.pop_data()?.get_interger(self)?;
                 if int != 0 {
@@ -957,7 +987,7 @@ impl AmlVM {
     }
 
     pub fn parse_expr_opcode(&mut self, op: AmlOp) -> Result<(), AmlError> {
-        use StackItem::{SimpleName, SuperName, Target, TermArg};
+        use StackItem::{Byte, Pkglen, SimpleName, SuperName, Target, TermArg};
         match op {
             AmlOp::ToStringOp
             | AmlOp::ConcatOp
@@ -976,28 +1006,16 @@ impl AmlVM {
             AmlOp::ObjectTypeOp | AmlOp::RefOfOp | AmlOp::DecrementOp | AmlOp::IncrementOp => {
                 self.push_unresolved_op(&[SuperName])
             }
+            AmlOp::SizeOfOp => self.push_unresolved_op(&[SuperName]),
 
             AmlOp::ToIntegerOp
             | AmlOp::ToBufferOp
             | AmlOp::ToDecimalStringOp
             | AmlOp::ToHexStringOp => self.push_unresolved_op(&[TermArg, Target]),
 
-            AmlOp::VarPackageOp => {
-                todo!("Not var package op implemented yet :3");
-            }
+            AmlOp::VarPackageOp => self.push_unresolved_op(&[Pkglen, TermArg]),
 
-            AmlOp::PackageOp => {
-                let start = self.stream.index;
-                let len = self.decode_pkg_length()?;
-                let num_elements = load_byte(self)? as usize;
-                self.stack.push(StackItem::Package {
-                    old_length: self.stream.length,
-                    package: Package::new(num_elements)?,
-                    inserted: 0,
-                })?;
-                self.stream.length = start + len;
-                Ok(())
-            }
+            AmlOp::PackageOp => self.push_unresolved_op(&[Pkglen, Byte]),
 
             AmlOp::StoreOp => self.push_unresolved_op(&[TermArg, SuperName]),
             AmlOp::CopyObjectOp => self.push_unresolved_op(&[TermArg, SimpleName]),

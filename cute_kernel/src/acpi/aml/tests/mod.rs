@@ -38,11 +38,102 @@ fn aml_test_case(boxed_data: &[u8]) -> (AmlVM, AmlData) {
     }
 }
 
+///Test passed
+#[test_case]
+fn table_loading_0() {
+    let boxed = Box::new(*include_bytes!("./compiled/table-loading-0.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"Hello World 123").unwrap());
+}
+
+///Test passed
+#[test_case]
+fn ref_modify_via_method_call() {
+    let boxed = Box::new(*include_bytes!("./compiled/ref-modify-via-method-call.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 124);
+}
+
+///Test passed
+#[test_case]
+fn ref_modify_indirect() {
+    let boxed = Box::new(*include_bytes!("./compiled/ref-modify-indirect.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0x124);
+}
+
+///Test passed
+#[test_case]
+fn return0_indirect() {
+    let boxed = Box::new(*include_bytes!("./compiled/return0-indirect.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0x0);
+}
+
+///Test passed
+#[test_case]
+fn return1_using_ifs() {
+    let boxed = Box::new(*include_bytes!("./compiled/return1-using-ifs.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0x1);
+}
+
+///Test passed
+#[test_case]
+fn return_0xdead_double_indirect() {
+    let boxed = Box::new(*include_bytes!(
+        "./compiled/return-0xdead-double-indirect.aml"
+    ));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0xDEAD);
+}
+
+///Test passed
+#[test_case]
+fn multi_level_ref() {
+    let boxed = Box::new(*include_bytes!("./compiled/multilevel-ref.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0xDEAD_0005);
+}
+
+///Test passed
+#[test_case]
+fn empty_objects() {
+    let boxed = Box::new(*include_bytes!("./compiled/empty-objects.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0);
+}
+
+///Test passsed
+#[test_case]
+fn empty_buffers() {
+    let boxed = Box::new(*include_bytes!("./compiled/empty-buffers.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 0);
+}
+
+///Test passed
+#[test_case]
+fn copy_object_self() {
+    let boxed = Box::new(*include_bytes!("./compiled/copy-object-self.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"Hello World").unwrap());
+}
+
+///Test passed
+#[test_case]
+fn complex_package() {
+    let boxed = Box::new(*include_bytes!("./compiled/complex-package.aml"));
+    let (vm, res) = aml_test_case(boxed.as_slice());
+    assert!(res.get_interger(&vm).unwrap() == 1);
+}
+
+///Test passed
 #[test_case]
 fn copy_a_method() {
     let boxed = Box::new(*include_bytes!("./compiled/copy-a-method.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.get_interger(&vm).unwrap() == 0);
+    assert!(res.get_interger(&vm).unwrap() == 37_3592_8559);
 }
 
 ///Test passed
@@ -59,14 +150,6 @@ fn to_x() {
     let boxed = Box::new(*include_bytes!("./compiled/to-x.aml"));
     let (vm, res) = aml_test_case(boxed.as_slice());
     assert!(res.get_interger(&vm).unwrap() == 0);
-}
-
-///Test passed
-#[test_case]
-fn table_loading_0() {
-    let boxed = Box::new(*include_bytes!("./compiled/table-loading-0.aml"));
-    let (vm, res) = aml_test_case(boxed.as_slice());
-    assert!(res.string(&vm).unwrap() == AmlString::from_bytes(b"Hello World 123").unwrap());
 }
 
 ///Test passed

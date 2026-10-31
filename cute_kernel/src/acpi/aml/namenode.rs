@@ -263,6 +263,9 @@ impl AmlData {
                 return Ok(());
             }
             Self::Debug => {
+                if !ctx.debug {
+                    return Ok(());
+                }
                 match new {
                     Self::String(str) => serial_println!("Debug : {}", str),
                     _ => serial_println!("Debug : {:?}", new),
