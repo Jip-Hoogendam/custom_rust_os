@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use alloc::{boxed::Box, rc::Rc, vec};
+use alloc::{boxed::Box, rc::Rc, string::String, vec};
 
 use crate::{
     acpi::aml::{
@@ -32,6 +32,34 @@ impl AmlString {
                 data => break Err(AmlError::InvalidData(data, "AmlString")),
             }
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.borrow().is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.borrow().len()
+    }
+
+    pub fn get(&self, index: usize) -> Option<u8> {
+        self.0.borrow().get(index).map(|b| *b)
+    }
+
+    pub fn from_string(mut string: String) -> Result<AmlString, AmlError> {
+        for (index, byte) in string.bytes().enumerate() {
+            match byte {
+                0x00 => {
+                    string.drain(index..);
+                    break;
+                }
+                0x01..0x7F => (),
+                data => return Err(AmlError::InvalidData(data, "AmlString")),
+            }
+        }
+        Ok(Self(Rc::new(RefCell::new(
+            string.into_boxed_str().into_boxed_bytes(),
+        ))))
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, AmlError> {

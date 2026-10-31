@@ -1,4 +1,11 @@
-use alloc::{boxed::Box, format, string::String, vec, vec::Vec};
+use alloc::vec;
+use alloc::{
+    boxed::Box,
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
+use core::cmp::{max, min};
 use core::{
     error::Error,
     fmt::Display,
@@ -457,12 +464,9 @@ impl AmlVM {
                 let name = self.pop_data()?;
                 if let AmlData::NameString(name) = name {
                     let data = self.pop_data()?;
-                    match self.push_node(name, data) {
-                        Ok(_) => (),
-                        Err(e) => Err(e)?,
-                    }
+                    self.push_node(name, data)
                 } else {
-                    Err(AmlError::InvalidAmlData(name, "ResolveOp Name op"))?;
+                    Err(AmlError::InvalidAmlData(name, "ResolveOp Name op"))
                 }
             }
 
@@ -478,7 +482,7 @@ impl AmlVM {
                     )?),
                     _ => Err(AmlError::InvalidAmlData(data, "Dref of op"))?,
                 };
-                self.stack.push_data(res.clone())?;
+                self.stack.push_data(res.clone())
             }
 
             AmlOp::StoreOp => {
@@ -486,7 +490,7 @@ impl AmlVM {
                 let data = data.resolve_locals(self)?.clone();
 
                 let mut name_res = self.pop_data()?;
-                name_res.store(self, data)?;
+                name_res.store(self, data)
             }
 
             AmlOp::WhileOp => {
@@ -502,6 +506,7 @@ impl AmlVM {
                 } else {
                     self.stream.index = op_index + len + 1;
                 }
+                Ok(())
             }
 
             AmlOp::ReturnOp => {
@@ -531,7 +536,7 @@ impl AmlVM {
                     }
                 }
                 self.stack.push(StackItem::Data(data))?;
-                self.stack.push(StackItem::Return)?;
+                self.stack.push(StackItem::Return)
             }
 
             AmlOp::IfOp => {
@@ -572,6 +577,7 @@ impl AmlVM {
                         let _ = self.decode_pkg_length()?;
                     }
                 }
+                Ok(())
             }
 
             AmlOp::DecrementOp => {
@@ -579,7 +585,7 @@ impl AmlVM {
                 let int = name_res.get_interger(self)?.wrapping_sub(1);
 
                 name_res.mutate(AmlData::Interger(int), self)?;
-                self.stack.push_data(name_res.deref(self)?.clone())?;
+                self.stack.push_data(name_res.deref(self)?.clone())
             }
 
             AmlOp::IncrementOp => {
@@ -588,7 +594,90 @@ impl AmlVM {
                 let int = name_res.get_interger(self)?.wrapping_add(1);
                 name_res.mutate(AmlData::Interger(int), self)?;
 
-                self.stack.push_data(name_res.deref(self)?.clone())?;
+                self.stack.push_data(name_res.deref(self)?.clone())
+            }
+
+            //Conversions
+            AmlOp::ToBufferOp => {
+                let data = self.pop_data()?;
+                let mut target = self.pop_data()?;
+                let buffer = match data {
+                    AmlData::Buffer(buf) => buf,
+                    AmlData::String(string) if string.is_empty() => Buffer {
+                        buffer: unsafe { Box::new_zeroed_slice(0).assume_init() },
+                    },
+                    AmlData::String(string) => {
+                        let mut str_buf = Box::new_zeroed_slice(string.len() + 1);
+                        for i in 0..string.len() {
+                            str_buf[i].write(string.get(i).ok_or(AmlError::IndexOutOfBounds(i))?);
+                        }
+                        Buffer {
+                            buffer: unsafe { str_buf.assume_init() },
+                        }
+                    }
+                    AmlData::Interger(int) => Buffer {
+                        buffer: Box::new(int.to_le_bytes()),
+                    },
+                    data => Err(AmlError::InvalidAmlData(data, "ToBuffer resolve"))?,
+                };
+                target.store(self, AmlData::Buffer(buffer))
+            }
+
+            AmlOp::ToDecimalStringOp => {
+                use core::fmt::Write;
+                let data = self.pop_data()?;
+                let mut target = self.pop_data()?;
+                let buffer = match data {
+                    AmlData::String(string) => string,
+                    AmlData::Buffer(buf) if buf.buffer.is_empty() => AmlString::from_bytes(&[])?,
+                    AmlData::Buffer(buf) => {
+                        let mut buf = buf.buffer.into_iter();
+                        let mut string =
+                            format!("{}", buf.next().ok_or(AmlError::IndexOutOfBounds(0))?);
+                        for byte in buf {
+                            write!(string, ",{byte}")
+                                .map_err(|_e| AmlError::InvalidData(byte, "ToDecimalStringOp"))?;
+                        }
+                        AmlString::from_string(string)?
+                    }
+                    AmlData::Interger(int) => AmlString::from_string(int.to_string())?,
+                    data => Err(AmlError::InvalidAmlData(data, "ToDecimalString resolve"))?,
+                };
+                target.store(self, AmlData::String(buffer))
+            }
+
+            AmlOp::ToHexStringOp => {
+                use core::fmt::Write;
+                let data = self.pop_data()?;
+                let mut target = self.pop_data()?;
+                let buffer = match data {
+                    AmlData::String(string) => string,
+                    AmlData::Buffer(buf) if buf.buffer.is_empty() => AmlString::from_bytes(&[])?,
+                    AmlData::Buffer(buf) => {
+                        let mut buf = buf.buffer.into_iter();
+                        let mut string =
+                            format!("{:#0x}", buf.next().ok_or(AmlError::IndexOutOfBounds(0))?);
+                        for byte in buf {
+                            write!(string, ",{byte:#0x}")
+                                .map_err(|_e| AmlError::InvalidData(byte, "ToDecimalStringOp"))?;
+                        }
+                        AmlString::from_string(string)?
+                    }
+                    AmlData::Interger(int) => AmlString::from_string(format!("{int:#0x}"))?,
+                    data => Err(AmlError::InvalidAmlData(data, "ToDecimalString resolve"))?,
+                };
+                target.store(self, AmlData::String(buffer))
+            }
+
+            AmlOp::ToStringOp => {
+                let source = self.pop_data()?.buffer(self)?;
+                let length = min(
+                    source.buffer.len(),
+                    self.pop_data()?.get_interger(self)? as usize,
+                );
+                let mut target = self.pop_data()?;
+                let string = AmlString::from_bytes(&source.buffer[..length])?;
+                target.store(self, AmlData::String(string))
             }
 
             //Method invokation
@@ -596,12 +685,12 @@ impl AmlVM {
                 if let AmlData::ObjRef(method_ref) = self.pop_data()? {
                     let node = self.get_node(method_ref)?;
                     if let AmlData::Method(method) = node.data.clone() {
-                        method.invoke(self, method_ref, &node.name.clone())?;
+                        method.invoke(self, method_ref, &node.name.clone())
                     } else {
-                        Err(AmlError::StackCorruption)?;
+                        Err(AmlError::StackCorruption)
                     }
                 } else {
-                    Err(AmlError::StackCorruption)?;
+                    Err(AmlError::StackCorruption)
                 }
             }
 
@@ -610,7 +699,7 @@ impl AmlVM {
                 let size = self.stack.pop_data()?.get_interger(self)?;
                 pkg_len -= self.stream.index as u64 - op_index as u64 - 1;
                 let buffer = Buffer::new(pkg_len, size, self.stream())?;
-                self.stack.push_data(AmlData::Buffer(buffer))?;
+                self.stack.push_data(AmlData::Buffer(buffer))
             }
 
             AmlOp::ConcatOp => {
@@ -618,7 +707,7 @@ impl AmlVM {
                 let source_2 = self.pop_data()?;
                 let mut target = self.pop_data()?;
                 let concatted = source_1.concat(source_2, self)?;
-                target.store(self, concatted)?;
+                target.store(self, concatted)
             }
 
             AmlOp::RefOfOp => {
@@ -630,36 +719,35 @@ impl AmlVM {
                     r @ AmlData::ObjRef(_) => r,
                     _ => Err(AmlError::InvalidAmlData(data, "Refof"))?,
                 };
-                self.stack.push_data(ptr)?;
+                self.stack.push_data(ptr)
             }
 
             AmlOp::CopyObjectOp => {
                 let data = self.stack.pop_data()?;
                 let name_res = self.stack.pop_data()?;
-                name_res.copy(self, data)?;
+                name_res.copy(self, data)
             }
             AmlOp::LnotOp => {
                 let int = self.stack.pop_data()?.get_interger(self)?;
                 if int != 0 {
-                    self.stack.push_data(AmlData::Interger(0))?;
+                    self.stack.push_data(AmlData::Interger(0))
                 } else {
-                    self.stack.push_data(AmlData::Interger(1))?;
+                    self.stack.push_data(AmlData::Interger(1))
                 }
             }
-            AmlOp::AddOp => self.mut_interger(u64::wrapping_add)?,
-            AmlOp::SubtractOp => self.mut_interger(u64::wrapping_sub)?,
-            AmlOp::MultiplyOp => self.mut_interger(u64::wrapping_mul)?,
-            AmlOp::AndOp => self.mut_interger(BitAnd::<u64>::bitand)?,
-            AmlOp::OrOp => self.mut_interger(BitOr::<u64>::bitor)?,
-            AmlOp::XorOp => self.mut_interger(BitXor::<u64>::bitxor)?,
-            AmlOp::LandOp => self.cmp_interger(|a, b| *a != 0 && *b != 0)?,
-            AmlOp::LorOp => self.cmp_interger(|a, b| *a != 0 || *b != 0)?,
-            AmlOp::LequalOp => self.cmp_interger(u64::eq)?,
-            AmlOp::LgreaterOp => self.cmp_interger(u64::gt)?,
-            AmlOp::LLlessOp => self.cmp_interger(u64::lt)?,
-            op => Err(AmlError::UnexpectedOp(op, "Resolve op"))?,
+            AmlOp::AddOp => self.mut_interger(u64::wrapping_add),
+            AmlOp::SubtractOp => self.mut_interger(u64::wrapping_sub),
+            AmlOp::MultiplyOp => self.mut_interger(u64::wrapping_mul),
+            AmlOp::AndOp => self.mut_interger(BitAnd::<u64>::bitand),
+            AmlOp::OrOp => self.mut_interger(BitOr::<u64>::bitor),
+            AmlOp::XorOp => self.mut_interger(BitXor::<u64>::bitxor),
+            AmlOp::LandOp => self.cmp_interger(|a, b| *a != 0 && *b != 0),
+            AmlOp::LorOp => self.cmp_interger(|a, b| *a != 0 || *b != 0),
+            AmlOp::LequalOp => self.cmp_interger(u64::eq),
+            AmlOp::LgreaterOp => self.cmp_interger(u64::gt),
+            AmlOp::LLlessOp => self.cmp_interger(u64::lt),
+            op => Err(AmlError::UnexpectedOp(op, "Resolve op")),
         }
-        Ok(())
     }
 
     pub fn exec_term_obj(&mut self) -> Result<(), AmlError> {
@@ -754,10 +842,11 @@ impl AmlVM {
     }
 
     pub fn parse_ext_expr_opcode(&mut self, op: ExtOp) -> Result<(), AmlError> {
-        use StackItem::{NameString, SuperName, Target};
+        use StackItem::{NameString, SuperName, Target, TermArg};
         match op {
             ExtOp::CondRefOfOp => self.push_unresolved_ext_op(&[SuperName, Target]),
             ExtOp::LoadOp => self.push_unresolved_ext_op(&[NameString, Target]),
+            ExtOp::ToBCDOp => self.push_unresolved_ext_op(&[TermArg, Target]),
             op => Err(AmlError::UnexpectedExtOp(op, "ExprExtParse")),
         }
     }
@@ -765,7 +854,8 @@ impl AmlVM {
     pub fn parse_expr_opcode(&mut self, op: AmlOp) -> Result<(), AmlError> {
         use StackItem::{SimpleName, SuperName, Target, TermArg};
         match op {
-            AmlOp::ConcatOp
+            AmlOp::ToStringOp
+            | AmlOp::ConcatOp
             | AmlOp::AndOp
             | AmlOp::XorOp
             | AmlOp::OrOp
@@ -780,6 +870,10 @@ impl AmlVM {
             AmlOp::DerefOfOp | AmlOp::LnotOp => self.push_unresolved_op(&[TermArg]),
             AmlOp::RefOfOp | AmlOp::DecrementOp | AmlOp::IncrementOp => {
                 self.push_unresolved_op(&[SuperName])
+            }
+
+            AmlOp::ToBufferOp | AmlOp::ToDecimalStringOp | AmlOp::ToHexStringOp => {
+                self.push_unresolved_op(&[TermArg, Target])
             }
 
             AmlOp::VarPackageOp => {
@@ -840,7 +934,7 @@ impl AmlVM {
             AmlOp::DWordOp => AmlData::Interger(u64::from(load_dword(self)?)),
             AmlOp::QWordOp => AmlData::Interger(load_qword(self)?),
             AmlOp::StringOp => AmlData::String(AmlString::exec(self)?),
-            AmlOp::OnesOp => AmlData::Interger(0xFF),
+            AmlOp::OnesOp => AmlData::Interger(u64::MAX),
             // AmlOp::BufferOp => AmlData::Buffer(Buffer::load(self)?),
             AmlOp::ExtOpPrefix => match self.peek_ext_opcode()? {
                 ExtOp::RevisionOp => {
@@ -1031,7 +1125,7 @@ impl AmlVM {
         }
     }
 
-    fn push_node(&mut self, name: NameString, data: AmlData) -> Result<ObjRef, AmlError> {
+    fn push_node(&mut self, name: NameString, data: AmlData) -> Result<(), AmlError> {
         let (path, node) = match name {
             NameString::Rel(path, parents) => {
                 let mut node = self.get_tlr();
@@ -1076,9 +1170,10 @@ impl AmlVM {
         };
 
         if node.is_null() {
-            Ok(ObjRef::null())
+            Ok(())
         } else {
-            self.append_to_node(node, NameNode::new(name.clone(), data))
+            self.append_to_node(node, NameNode::new(name.clone(), data))?;
+            Ok(())
         }
     }
 
