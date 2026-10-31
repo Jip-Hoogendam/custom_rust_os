@@ -1,13 +1,10 @@
 use alloc::{boxed::Box, vec};
 
-use crate::{
-    acpi::aml::{
-        AmlError,
-        data_objects::Package,
-        executor::{ByteStream, ObjRef},
-        namenode::AmlData,
-    },
-    serial_println,
+use crate::acpi::aml::{
+    AmlError,
+    data_objects::Package,
+    executor::{ByteStream, ObjRef},
+    namenode::AmlData,
 };
 
 #[derive(Debug, Clone)]
@@ -101,7 +98,6 @@ impl AmlStack {
             Some(StackItem::Package {
                 package, inserted, ..
             }) => {
-                serial_println!("data : {:?}", item);
                 *package
                     .get_mut(*inserted)
                     .ok_or(AmlError::IndexOutOfBounds(*inserted))? = item;
@@ -150,8 +146,6 @@ impl AmlStack {
             .stack
             .get_mut(self.stack_ptr)
             .ok_or(AmlError::StackOverflow)?;
-
-        serial_println!("Pop: {:?}", data);
         core::mem::swap(&mut res, data);
 
         Ok(Some(res))
@@ -184,7 +178,6 @@ impl AmlStack {
     ///Pops unresolved data from the stack to work with.
     pub fn pop_unresolved(&mut self) -> Result<Option<StackItem>, AmlError> {
         if let Some(data) = self.peek() {
-            serial_println!("peek : {:?}", data);
             match data {
                 StackItem::Package { .. } => Ok(Some(StackItem::PackageElement)),
                 StackItem::UnreselvedExtOp {

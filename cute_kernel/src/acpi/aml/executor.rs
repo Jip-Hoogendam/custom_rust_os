@@ -6,6 +6,7 @@ use alloc::{
     vec::Vec,
 };
 use core::cmp::{max, min};
+use core::num::{IntErrorKind, ParseIntError};
 use core::{
     error::Error,
     fmt::Display,
@@ -15,6 +16,7 @@ use core::{
 
 use super::stack_items::StackItem;
 
+use crate::serial_println;
 use crate::{
     acpi::{
         SDTables,
@@ -31,7 +33,6 @@ use crate::{
     },
     collections::typed_arena::{TypedArena, TypedArenaAllocation},
     memory::addresses::VirtAddr,
-    print, serial_println,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -306,7 +307,6 @@ impl AmlVM {
                             Err(e) => Err(self.unwind_stackframe(e))?,
                         }
                     } else {
-                        serial_println!("Call ?");
                         self.exec_term_obj()
                             .map_err(|e| self.unwind_stackframe(e))?;
                     }
@@ -403,7 +403,6 @@ impl AmlVM {
     }
 
     pub fn resolve_ext_op(&mut self, op_index: usize) -> Result<(), AmlError> {
-        serial_println!("ext op : {:?}", self.ext_op_at(op_index));
         match self.ext_op_at(op_index)? {
             ExtOp::CondRefOfOp => {
                 let data = self.stack.pop_data()?;
@@ -458,7 +457,6 @@ impl AmlVM {
     }
 
     pub fn resolve_op(&mut self, op_index: usize) -> Result<(), AmlError> {
-        serial_println!("op : {:?}", self.op_at(op_index));
         match self.op_at(op_index)? {
             AmlOp::NameOp => {
                 let name = self.pop_data()?;
@@ -513,7 +511,6 @@ impl AmlVM {
                 //Have to deref in case it is a local value
                 let data = self.pop_data()?;
                 let data = data.resolve_locals(self)?.clone();
-                serial_println!("returing : {:?}", data);
                 loop {
                     match self.stack.pop()? {
                         Some(StackItem::MethodCall {
@@ -545,17 +542,10 @@ impl AmlVM {
                 let mut original_index = self.stream.index;
                 self.stream.index = op_index + 1 + len;
 
-                serial_println!(
-                    "Original Index : {}, stream index : {}",
-                    original_index,
-                    self.stream.index
-                );
-
                 let data = self.pop_data()?.get_interger(self)?;
                 if data != 0 {
                     //true
 
-                    serial_println!("True! : {:?}", self.peek_opcode());
                     //extend if else op is after this if
                     if matches!(self.peek_opcode(), Ok(AmlOp::ElseOp)) {
                         self.next()?;
@@ -571,7 +561,6 @@ impl AmlVM {
                     self.stream.length = op_index + 1 + len;
                 } else {
                     //false
-                    serial_println!("False!: {:?}", self.peek_opcode());
                     if matches!(self.peek_opcode(), Ok(AmlOp::ElseOp)) {
                         self.next()?;
                         let _ = self.decode_pkg_length()?;
@@ -680,6 +669,96 @@ impl AmlVM {
                 target.store(self, AmlData::String(string))
             }
 
+            AmlOp::ToIntegerOp => {
+                let source = self.pop_data()?;
+                let mut target = self.pop_data()?;
+                let int = match source {
+                    AmlData::Interger(int) => int,
+                    AmlData::String(str) => {
+                        let string = str.0.borrow();
+
+                        //check if negagive
+                        let negative = string.starts_with(b"-");
+
+                        let string = string.trim_prefix(b"-").trim_prefix(b"+");
+
+                        let int = if string.starts_with(b"0x") || string.starts_with(b"0X") {
+                            let mut buffer = 0u64;
+                            let len = min(string.len() - 3, 15);
+                            let mut iter = string.iter().skip(2).enumerate().take(16);
+                            for (index, nibble) in &mut iter {
+                                let index = (len - index) * 4;
+                                serial_println!("index : {}, len:{}", index, len);
+                                buffer |= match nibble {
+                                    d @ b'0'..=b'9' => u64::from(d - b'0') << index,
+                                    c @ b'a'..=b'f' => u64::from(c - b'a' + 10) << index,
+                                    c @ b'A'..=b'F' => u64::from(c - b'A' + 10) << index,
+                                    _ => {
+                                        buffer >>= index + 4;
+                                        break;
+                                    }
+                                }
+                            }
+                            if matches!(
+                                string.get(len + 3),
+                                Some(b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')
+                            ) {
+                                u64::MAX
+                            } else {
+                                buffer
+                            }
+                        } else if string.starts_with(b"0") {
+                            let mut buffer = 0u64;
+                            let len = min(string.len() - 2, 21);
+                            let mut iter = string.iter().skip(1).enumerate().take(21);
+                            for (index, nibble) in &mut iter {
+                                let index = (len - index) * 3;
+                                buffer |= if let d @ b'0'..=b'7' = nibble {
+                                    u64::from(d - b'0') << index
+                                } else {
+                                    buffer >>= index + 3;
+                                    break;
+                                }
+                            }
+                            if matches!(string.get(len + 2), Some(b'0'..=b'7')) {
+                                u64::MAX
+                            } else {
+                                buffer
+                            }
+                        } else {
+                            let string = string
+                                .iter()
+                                .copied()
+                                .filter(u8::is_ascii_digit)
+                                .collect::<Box<[u8]>>();
+
+                            let string = str::from_utf8(&string).unwrap_or("");
+
+                            match string.parse::<u64>() {
+                                Ok(int) => int,
+                                Err(e) => match e.kind() {
+                                    IntErrorKind::PosOverflow => u64::MAX,
+                                    _ => 0,
+                                },
+                            }
+                        };
+
+                        #[allow(clippy::cast_sign_loss)]
+                        #[allow(clippy::cast_possible_wrap)]
+                        if negative { -(int as i64) as u64 } else { int }
+                    }
+                    AmlData::Buffer(Buffer { buffer }) if !buffer.is_empty() => {
+                        let mut bytes = [0; size_of::<u64>()];
+                        for i in 0..buffer.len() {
+                            bytes[i] = buffer[i];
+                        }
+                        u64::from_le_bytes(bytes)
+                    }
+                    data => Err(AmlError::InvalidAmlData(data, "Resolve ToIntergerOp"))?,
+                };
+                target.store(self, AmlData::Interger(int))
+            }
+
             //Method invokation
             AmlOp::NameChar | AmlOp::Rootchar | AmlOp::ParentPrefixChar => {
                 if let AmlData::ObjRef(method_ref) = self.pop_data()? {
@@ -722,6 +801,33 @@ impl AmlVM {
                 self.stack.push_data(ptr)
             }
 
+            AmlOp::ObjectTypeOp => {
+                let data = self.stack.pop_data()?;
+                let data = data.resolve_locals(self)?;
+                let int = match data {
+                    AmlData::Null => 0,
+                    AmlData::Interger(_) => 1,
+                    AmlData::String(_) => 2,
+                    AmlData::Buffer(_) => 3,
+                    AmlData::Package(_) => 4,
+                    AmlData::FieldUnit() => 5,
+                    AmlData::Device() => 6,
+                    AmlData::Event() => 7,
+                    AmlData::Method(_) => 8,
+                    AmlData::Mutex(_) => 9,
+                    AmlData::OpRegion() => 10,
+                    AmlData::PowerResource() => 11,
+                    AmlData::ThermalZone() => 13,
+                    AmlData::BufferField() => 14,
+                    AmlData::Debug => 16,
+                    data => Err(AmlError::InvalidAmlData(
+                        data.clone(),
+                        "Resolve ObjectTypeOp",
+                    ))?,
+                };
+                self.stack.push_data(AmlData::Interger(int))
+            }
+
             AmlOp::CopyObjectOp => {
                 let data = self.stack.pop_data()?;
                 let name_res = self.stack.pop_data()?;
@@ -752,7 +858,6 @@ impl AmlVM {
 
     pub fn exec_term_obj(&mut self) -> Result<(), AmlError> {
         let op = self.next_opcode()?;
-        serial_println!("OP : {:?}", op);
         match op {
             AmlOp::ReturnOp => self.push_unresolved_op(&[StackItem::TermArg]),
             AmlOp::NameOp => {
@@ -868,13 +973,14 @@ impl AmlVM {
             | AmlOp::LgreaterOp
             | AmlOp::LLlessOp => self.push_unresolved_op(&[TermArg, TermArg]),
             AmlOp::DerefOfOp | AmlOp::LnotOp => self.push_unresolved_op(&[TermArg]),
-            AmlOp::RefOfOp | AmlOp::DecrementOp | AmlOp::IncrementOp => {
+            AmlOp::ObjectTypeOp | AmlOp::RefOfOp | AmlOp::DecrementOp | AmlOp::IncrementOp => {
                 self.push_unresolved_op(&[SuperName])
             }
 
-            AmlOp::ToBufferOp | AmlOp::ToDecimalStringOp | AmlOp::ToHexStringOp => {
-                self.push_unresolved_op(&[TermArg, Target])
-            }
+            AmlOp::ToIntegerOp
+            | AmlOp::ToBufferOp
+            | AmlOp::ToDecimalStringOp
+            | AmlOp::ToHexStringOp => self.push_unresolved_op(&[TermArg, Target]),
 
             AmlOp::VarPackageOp => {
                 todo!("Not var package op implemented yet :3");
@@ -1538,7 +1644,6 @@ impl AmlVM {
 
     ///Pushes a unresolved op to the stack
     fn push_unresolved_op(&mut self, args: &[StackItem]) -> Result<(), AmlError> {
-        serial_println!("Args : {:?}", args);
         // -1 due to the stream index always sitting at the next item to be read.
         self.stack.op_arg_push(self.stream.index - 1, args)
     }

@@ -1,4 +1,4 @@
-use core::{mem, ops::DerefMut, sync::atomic::AtomicBool, usize};
+use core::{cmp::min, mem, ops::DerefMut, sync::atomic::AtomicBool, usize};
 
 use alloc::{boxed::Box, format, rc::Rc, vec::Vec};
 
@@ -257,15 +257,16 @@ impl AmlData {
 
     ///Sets the new value without type conversions.
     pub fn store(&mut self, ctx: &mut AmlVM, new: AmlData) -> Result<(), AmlError> {
-        serial_println!("Storing : {:?}", self);
-
         let (data, new) = match self {
             Self::Null => {
                 ctx.stack.push_data(new)?;
                 return Ok(());
             }
             Self::Debug => {
-                serial_println!("Debug : {:?}", new);
+                match new {
+                    Self::String(str) => serial_println!("Debug : {}", str),
+                    _ => serial_println!("Debug : {:?}", new),
+                }
                 return Ok(());
             }
             Self::ArgRef(stack_ref) => {
@@ -325,12 +326,13 @@ impl AmlData {
             data => Err(AmlError::InvalidAmlData(data.clone(), "Aml Store"))?,
         };
 
-        serial_println!("Test call ! {:?} : {:?}", data, new);
         match (data, new) {
             (Self::String(str), Self::String(res_str)) => {
                 let src_str = res_str.0.borrow();
-                for (index, byte) in str.0.borrow_mut().iter_mut().enumerate() {
-                    *byte = src_str[index];
+                let mut dst_str = str.0.borrow_mut();
+                let len = min(dst_str.len(), src_str.len());
+                for i in 0..len {
+                    dst_str[i] = src_str[i];
                 }
             }
             (Self::Interger(int), Self::Interger(new_int)) => *int = new_int,
@@ -372,7 +374,6 @@ impl AmlData {
             data => data,
         };
 
-        serial_println!("Test call ! {:?} : {:?}", data, new);
         match (data, new) {
             (Self::String(str), Self::String(res_str)) => {
                 let src_str = res_str.0.borrow();
@@ -424,12 +425,17 @@ impl AmlData {
                     && matches!(str.0.borrow()[0], b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') =>
             {
                 let mut buffer = 0u64;
+                let len = min(str.len() - 3, 16);
                 for (index, nibble) in str.0.borrow().iter().enumerate().take(16) {
+                    let index = (len - index) * 4;
                     buffer |= match nibble {
-                        d @ b'0'..=b'9' => u64::from(d - b'0') << (16 - index),
-                        c @ b'a'..=b'f' => u64::from(c - b'a' + 10) << (16 - index),
-                        c @ b'A'..=b'F' => u64::from(c - b'A' + 10) << (16 - index),
-                        _ => break,
+                        d @ b'0'..=b'9' => u64::from(d - b'0') << index,
+                        c @ b'a'..=b'f' => u64::from(c - b'a' + 10) << index,
+                        c @ b'A'..=b'F' => u64::from(c - b'A' + 10) << index,
+                        _ => {
+                            buffer >>= index;
+                            break;
+                        }
                     }
                 }
                 Ok(buffer)
@@ -481,7 +487,6 @@ impl AmlData {
     }
 
     pub fn implicit_convert(self, to: &Self, ctx: &AmlVM) -> Result<AmlData, AmlError> {
-        serial_println!("setting : {:?} -> {:?}", self, to);
         //Find what to convert to.
         let mut to = to;
         loop {
@@ -512,8 +517,6 @@ impl AmlData {
                 _ => break,
             }
         }
-
-        serial_println!("setting : {:?} -> {:?}", data, to);
 
         //Convert
         match to {

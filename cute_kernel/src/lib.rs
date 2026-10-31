@@ -7,6 +7,7 @@
 #![feature(ptr_metadata)]
 #![feature(must_not_suspend)]
 #![feature(portable_simd)]
+#![feature(trim_prefix_suffix)]
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::nursery)]

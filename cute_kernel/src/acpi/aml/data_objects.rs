@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Display};
 
 use alloc::{boxed::Box, rc::Rc, string::String, vec};
 
@@ -17,8 +17,13 @@ pub struct AmlString(pub Rc<RefCell<Box<[u8]>>>);
 
 impl Clone for AmlString {
     fn clone(&self) -> Self {
-        serial_println!("CALL");
         Self(Rc::clone(&self.0))
+    }
+}
+
+impl Display for AmlString {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "AmlString{{ {:?} }}", str::from_utf8(&self.0.borrow()))
     }
 }
 
